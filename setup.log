@@ -1,0 +1,16 @@
+2025-08-10 09:43:17  Using system Python: py -3.12
+2025-08-10 09:43:23  Installing requirements from patched file...
+2025-08-10 09:43:32  Torch present: 2.8.0+cpu
+2025-08-10 09:48:19  Using system Python: py -3.12
+2025-08-10 09:48:25  Installing requirements (patched)…
+2025-08-10 09:48:30  Torch present: 2.8.0+cpu
+2025-08-10 09:48:44  Collecting en-core-web-sm==3.8.0
+  Downloading https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl (12.8 MB)
+     ---------------------------------------- 12.8/12.8 MB 36.5 MB/s  0:00:00
+Installing collected packages: en-core-web-sm
+Successfully installed en-core-web-sm-3.8.0
+Python: 3.12.10
+[38;5;2m[+] Download and installation successful[0m
+You can now load the package via spacy.load('en_core_web_sm')
+Kokoro: OK (pipeline constructed)
+2025-08-10 09:48:44  Setup complete. You can now run start_audiobooks.bat.

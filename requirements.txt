@@ -1,0 +1,45 @@
+﻿# Core parsing & utility
+EbookLib==0.19
+beautifulsoup4==4.13.4
+lxml==6.0.0
+requests==2.32.4
+pypdf==5.1.0
+python-docx==1.1.2
+
+# Kokoro stack (pins we tested)
+numpy==1.26.4
+torch==2.3.1
+transformers==4.55.0
+huggingface-hub==0.34.4
+kokoro==0.9.4
+misaki==0.9.4
+loguru==0.7.3
+phonemizer-fork==3.3.2
+safetensors==0.6.2
+tqdm==4.67.1
+regex==2025.7.34
+packaging==25.0
+tokenizers==0.21.4
+
+# HTML helpers
+soupsieve==2.7
+markdown-it-py==3.0.0
+mdurl==0.1.2
+
+# Small deps (as pinned earlier)
+addict==2.4.0
+annotated-types==0.7.0
+attrs==25.3.0
+colorama==0.4.6
+pydantic==2.11.7
+pydantic_core==2.33.2
+typing_extensions==4.12.2
+wheel==0.45.1
+setuptools==80.9.0
+PySide6==6.7.3
+
+
+
+
+
+
