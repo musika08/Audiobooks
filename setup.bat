@@ -1,26 +1,26 @@
 @echo off
-setlocal enableextensions
-cd /d "%~dp0"
+setlocal EnableExtensions
 
-rem If the venv python exists, just start the app; otherwise run setup first.
-if exist ".venv\Scripts\python.exe" goto :RUN
-
+REM Keep the window around
+title Audiobooks Setup
 echo Running PowerShell setup...
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+echo.
+
+REM Prefer the PowerShell in system32 (works on Win10/11)
+set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+if not exist "%PS%" set "PS=powershell.exe"
+
+REM Run setup.ps1 from the current folder, no profile, bypass policy
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
 if errorlevel 1 (
   echo.
-  echo [!] Setup failed. See messages above.
-  pause
+  echo [X] Setup reported an error. See setup.log for details.
+  echo Press any key to close...
+  pause >nul
   exit /b 1
 )
 
-:RUN
-echo Using: .venv\Scripts\python.exe
-".venv\Scripts\python.exe" -m audiobooks
-set ec=%ERRORLEVEL%
-if not "%ec%"=="0" (
-  echo.
-  echo [!] The app exited with an error. Please copy the text above.
-  pause
-)
-endlocal
+echo.
+echo [OK] Setup finished. You can close this window and run start_audiobooks.bat.
+echo Press any key to close...
+pause >nul
