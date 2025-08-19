@@ -1,10 +1,11 @@
-﻿# Core parsing & utility
+# Core parsing & utility
 EbookLib==0.19
 beautifulsoup4==4.13.4
 lxml==6.0.0
 requests==2.32.4
 pypdf==5.1.0
 python-docx==1.1.2
+pdfminer.six==20231228
 
 # Kokoro stack (pins we tested)
 numpy==1.26.4
@@ -37,9 +38,3 @@ typing_extensions==4.12.2
 wheel==0.45.1
 setuptools==80.9.0
 PySide6==6.7.3
-
-
-
-
-
-
