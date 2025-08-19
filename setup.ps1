@@ -1,234 +1,163 @@
-# ================================
-# Audiobooks - Automatic Setup (PowerShell)
-# ================================
-# - Ensures Python 3.12 (per-user, silent)
-# - Creates .venv and installs deps
-# - Prefers CUDA torch if NVIDIA GPU detected; else CPU torch
-# - Pins NumPy 1.26.4 (binary wheel) for Kokoro compatibility
-# - Installs GUI + text parsers + Kokoro
-# - Verifies PySide6, Torch, Kokoro imports
-# ================================
-
+# ============================================
+# Audiobooks - setup.ps1
+# Fix: keep a matched CUDA PyTorch trio and prevent later downgrades
+# Safe to re-run.
+# ============================================
 $ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+Write-Host "Running PowerShell setup..."
 
-Write-Host "Running PowerShell setup..." -ForegroundColor Cyan
-
-function Get-ProjectRoot {
-  if ($PSScriptRoot) { return $PSScriptRoot }
-  $p = $MyInvocation.MyCommand.Path
-  if (-not $p) { $p = (Get-Location).Path }
-  return Split-Path -Path $p -Parent
+function Get-SetupRoot {
+  try {
+    if ($PSCommandPath) { return Split-Path -LiteralPath $PSCommandPath -Parent }
+    if ($MyInvocation.MyCommand.Path) { return Split-Path -LiteralPath $MyInvocation.MyCommand.Path -Parent }
+  } catch {}
+  return (Get-Location).Path
 }
-$Root = Get-ProjectRoot
+$Root = Get-SetupRoot
 Write-Host "Using setup path: $Root"
 
-function Invoke-Download($Url, $OutFile) {
-  Write-Host "Downloading: $Url"
-  $wc = New-Object System.Net.WebClient
-  $wc.Headers.Add("User-Agent","Mozilla/5.0")
-  $wc.DownloadFile($Url, $OutFile)
+# ---- Locate a system Python (3.12/3.13 preferred) ----
+function Get-SystemPython {
+  $candidates = @("python", "py -3.12", "py -3.13")
+  foreach ($cmd in $candidates) {
+    try {
+      $v = & $cmd -V 2>$null
+      if ($LASTEXITCODE -eq 0) { return $cmd }
+    } catch {}
+  }
+  return $null
 }
-
-function Assert-File($Path, $Msg) {
-  if (-not (Test-Path $Path)) { throw $Msg }
+$sysPyCmd = Get-SystemPython
+if (-not $sysPyCmd) {
+  Write-Host "[X] No system Python found. Please install Python 3.12 or 3.13 from python.org first."
+  throw "Python not available."
 }
-
-function Ensure-Python312 {
-  # Try py launcher
-  try {
-    $ok = & py -3.12 -c "import sys; print('OK')" 2>$null
-    if ($LASTEXITCODE -eq 0) { return "py -3.12" }
-  } catch {}
-
-  # Try python in PATH
-  try {
-    $cmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($cmd) {
-      $v = & python -c "import sys; print(sys.version_info[:2])" 2>$null
-      if ($LASTEXITCODE -eq 0 -and $v -match "^\(3, 12\)") { return "python" }
-    }
-  } catch {}
-
-  Write-Host "No system Python 3.12 found. Installing per-user..." -ForegroundColor Yellow
-  $tmp = Join-Path $env:TEMP "python-3.12.8-amd64.exe"
-  $url = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
-  Invoke-Download $url $tmp
-  $args = @(
-    "/quiet","InstallAllUsers=0","Include_pip=1","PrependPath=1","Include_test=0","SimpleInstall=1","Shortcuts=0"
-  )
-  $p = Start-Process -FilePath $tmp -ArgumentList $args -Wait -PassThru
-  if ($p.ExitCode -ne 0) { throw "Python installer failed with exit code $($p.ExitCode)" }
-
-  # Re-check
-  try {
-    $ok = & py -3.12 -c "import sys; print('OK')" 2>$null
-    if ($LASTEXITCODE -eq 0) { return "py -3.12" }
-  } catch {}
-  try {
-    $ok = & python -c "import sys; print('OK')" 2>$null
-    if ($LASTEXITCODE -eq 0) { return "python" }
-  } catch {}
-  throw "Python 3.12 installed but not found on PATH. Restart the console, then re-run."
-}
-$sysPyCmd = Ensure-Python312
+try {
+  $ver = & $sysPyCmd -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')"
+  Write-Host "Python $ver"
+} catch {}
 Write-Host "Using system Python command: $sysPyCmd"
 
-# -------- venv --------
+# ---- Ensure venv ----
 $venvPath = Join-Path $Root ".venv"
 $venvPy   = Join-Path $venvPath "Scripts\python.exe"
 if (-not (Test-Path $venvPy)) {
   Write-Host "Creating virtual environment (.venv)..."
   & $sysPyCmd -m venv "$venvPath"
 }
-Assert-File $venvPy "Virtual environment creation failed."
+
+# ---- Base packaging tools ----
 & $venvPy -m pip install --upgrade pip setuptools wheel
 
-# -------- GPU detection (no ternary) --------
-function Has-NvidiaGPU {
+# ---- Detect NVIDIA (CUDA) ----
+function Test-NvidiaAvailable {
   try {
-    $nvsmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
+    $nvsmi = (Get-Command "nvidia-smi" -ErrorAction SilentlyContinue)
     if ($nvsmi) { return $true }
-  } catch {}
-  try {
-    $gpus = Get-WmiObject Win32_VideoController | Select-Object -ExpandProperty Name
-    if ($gpus -match "NVIDIA") { return $true }
   } catch {}
   return $false
 }
-$hasCuda = Has-NvidiaGPU
-$gpuMsg = if ($hasCuda) { "Yes" } else { "No" }
-Write-Host "NVIDIA GPU detected: $gpuMsg"
+$hasCuda = Test-NvidiaAvailable
+if ($hasCuda) { Write-Host "NVIDIA GPU detected." } else { Write-Host "No NVIDIA GPU detected. CPU-only PyTorch will be used." }
 
-# -------- Core deps --------
-Write-Host "Installing NumPy 1.26.4 (binary wheel only)..."
-& $venvPy -m pip install --only-binary=:all: --upgrade "numpy==1.26.4"
-
-Write-Host "Installing GUI and text parsers..."
-$guiDeps = @(
-  "PySide6>=6.7,<7.0",
-  "EbookLib==0.19",
-  "beautifulsoup4",
-  "pypdf>=4,<5",
-  "python-docx>=1.1.2",
-  "requests",
-  "lxml"
-)
-& $venvPy -m pip install --upgrade @guiDeps
-
-# -------- Torch (CUDA if possible) --------
-function Install-Torch([bool]$PreferCUDA) {
-  # remove any prior torch first to avoid conflicts
-  & $venvPy -m pip uninstall -y torch torchvision torchaudio 2>$null | Out-Null
-
-  if ($PreferCUDA) {
-    Write-Host "Installing PyTorch (CUDA)..." -ForegroundColor Cyan
-    try {
-      & $venvPy -m pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
-      if ($LASTEXITCODE -eq 0) { return $true }
-    } catch {}
-    Write-Host "CUDA torch failed. Falling back to CPU..." -ForegroundColor Yellow
-  }
-
-  Write-Host "Installing PyTorch (CPU)..." -ForegroundColor Cyan
-  & $venvPy -m pip install --upgrade --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
-  return ($LASTEXITCODE -eq 0)
-}
-$okTorch = Install-Torch $hasCuda
-if (-not $okTorch) { throw "PyTorch installation failed." }
-
-# -------- Kokoro + deps --------
-Write-Host "Installing Kokoro dependencies..."
-$kDeps = @(
-  "huggingface-hub>=0.22",
-  "transformers>=4.40,<4.56",
-  "loguru>=0.7,<1.0",
-  "safetensors>=0.4,<1.0",
-  "phonemizer-fork>=3.3"
-)
-& $venvPy -m pip install --upgrade @kDeps
-
-$kokoroOk = $false
-try {
-  Write-Host "Installing Kokoro (PyPI)..."
-  & $venvPy -m pip install --upgrade "kokoro==0.9.4"
-  if ($LASTEXITCODE -eq 0) { $kokoroOk = $true }
-} catch {}
-
-if (-not $kokoroOk) {
-  Write-Host "PyPI Kokoro failed; attempting Git fallback..." -ForegroundColor Yellow
-
-  # PortableGit
-  $gitRoot = Join-Path $Root "PortableGit"
-  $gitExe  = Join-Path $gitRoot "cmd\git.exe"
-  if (-not (Test-Path $gitExe)) {
-    Write-Host "Fetching PortableGit..."
-    New-Item -ItemType Directory -Force -Path $gitRoot | Out-Null
-    $pkg = Join-Path $gitRoot "PortableGit-2.45.2-64-bit.7z.exe"
-    $gitUrl = "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/PortableGit-2.45.2-64-bit.7z.exe"
-    Invoke-Download $gitUrl $pkg
-    $payload = Join-Path $gitRoot "payload"
-    New-Item -ItemType Directory -Force -Path $payload | Out-Null
-    Start-Process -FilePath $pkg -ArgumentList "-y","-o$payload" -Wait
-    Get-ChildItem -Path $payload | ForEach-Object { Move-Item $_.FullName -Destination $gitRoot -Force }
-    Remove-Item $payload -Recurse -Force
-  }
-
-  if (Test-Path $gitExe) {
-    $env:GIT_ASKPASS = 'echo'
-    $env:SSH_ASKPASS = 'echo'
-    $env:PATH = (Split-Path $gitExe -Parent) + ";" + $env:PATH
-
-    try {
-      Write-Host "Installing Misaki (Git)..."
-      & $venvPy -m pip install "git+https://github.com/hexgrad/Misaki.git@main#egg=misaki[en]"
-    } catch {}
-
-    Write-Host "Installing Kokoro (Git)..."
-    & $venvPy -m pip install "git+https://github.com/hexgrad/Kokoro-TTS.git@main#egg=kokoro"
-    if ($LASTEXITCODE -eq 0) { $kokoroOk = $true }
-  } else {
-    Write-Host "[WARN] PortableGit missing; skipping Git fallback." -ForegroundColor Yellow
-  }
-}
-
-if (-not $kokoroOk) {
-  Write-Host "[WARN] Kokoro could not be installed automatically. You can still run the GUI and install later with:"
-  Write-Host "       .\.venv\Scripts\pip.exe install kokoro==0.9.4"
-}
-
-# -------- Simple verifiers (temp .py files) --------
-function Py-Check($pycode, $label) {
-  $tmp = Join-Path $env:TEMP ("verify_" + [guid]::NewGuid().ToString("N") + ".py")
-  Set-Content -LiteralPath $tmp -Value $pycode -Encoding UTF8
+# ---- Helper: uninstall-if-present; clean any stuck ~orch dirs ----
+function Uninstall-IfPresent {
+  param([string]$Pkg)
   try {
-    $out = & $venvPy $tmp *>&1
-    if ($LASTEXITCODE -eq 0) {
-      Write-Host "$label OK"
-    } else {
-      Write-Host "$label FAILED:" -ForegroundColor Yellow
-      Write-Host ($out | Out-String)
+    & $venvPy -m pip show $Pkg 1>$null 2>$null
+    if ($LASTEXITCODE -eq 0) { & $venvPy -m pip uninstall -y $Pkg | Out-Null }
+  } catch { }
+}
+function Remove-StuckTorch {
+  param([string]$SitePkgs)
+  if (-not (Test-Path $SitePkgs)) { return }
+  Get-ChildItem -LiteralPath $SitePkgs -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.PSIsContainer -and $_.Name -like "~orch*" } |
+    ForEach-Object {
+      try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
     }
-  } finally {
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-  }
+}
+# site-packages path
+$sitePkgs = ""
+try { $sitePkgs = & $venvPy -c "import sysconfig; print(sysconfig.get_paths().get('purelib',''))" } catch {}
+if ($sitePkgs) { Remove-StuckTorch -SitePkgs $sitePkgs }
+
+# ======================================================
+# 1) Install a MATCHED PyTorch trio (torch/vision/audio)
+#    Pick CUDA 12.1 wheels when NVIDIA is present.
+#    Install AS A LOCKED SET to avoid resolver downgrades.
+# ======================================================
+$TORCH_VER   = "2.5.1"
+$VISION_VER  = "0.20.1"
+$AUDIO_VER   = "2.5.1"
+if ($hasCuda) {
+  $TAG = "cu121"
+  $INDEX = "https://download.pytorch.org/whl/cu121"
+} else {
+  $TAG = "cpu"
+  $INDEX = "https://download.pytorch.org/whl/cpu"
 }
 
-Write-Host "Verifying PySide6 import..."
-Py-Check 'from PySide6 import QtCore; print("PySide6 OK")' "PySide6"
+# Remove any existing trio first
+Uninstall-IfPresent -Pkg "torchaudio"
+Uninstall-IfPresent -Pkg "torchvision"
+Uninstall-IfPresent -Pkg "torch"
+Start-Sleep -Seconds 1
+if ($sitePkgs) { Remove-StuckTorch -SitePkgs $sitePkgs }
 
-Write-Host "Verifying Torch/CUDA..."
-Py-Check @'
-import torch
-print("Torch:", getattr(torch, "__version__", "?"))
-print("Built with CUDA:", getattr(torch.version, "cuda", None))
-print("CUDA available:", torch.cuda.is_available())
-if torch.cuda.is_available():
-    print("Device:", torch.cuda.get_device_name(0))
-'@ "Torch"
+Write-Host "Installing PyTorch set ($TORCH_VER+$TAG) as a locked trio…"
+& $venvPy -m pip install --index-url $INDEX --force-reinstall --no-deps `
+  "torch==$TORCH_VER+$TAG" `
+  "torchvision==$VISION_VER+$TAG" `
+  "torchaudio==$AUDIO_VER+$TAG"
 
-Write-Host "Verifying Kokoro import..."
-Py-Check 'import kokoro; from kokoro.pipeline import KPipeline; print("Kokoro OK")' "Kokoro"
+# ======================================================
+# 2) Pin Transformers/Tokenizers/HF Hub compatible with Kokoro
+# ======================================================
+& $venvPy -m pip install --upgrade --no-cache-dir `
+  "transformers==4.55.0" `
+  "tokenizers==0.21.4" `
+  "huggingface-hub==0.34.4"
 
-Write-Host ""
-Write-Host "[OK] Setup finished. You can close this window and run start_audiobooks.bat." -ForegroundColor Green
+# ======================================================
+# 3) Install the rest of requirements, but FILTER OUT packages that would fight our pins:
+#    torch, torchvision, torchaudio, transformers, tokenizers, huggingface-hub, numpy
+# ======================================================
+$reqTxt = Join-Path $Root "requirements.txt"
+if (Test-Path $reqTxt) {
+  $raw = Get-Content -LiteralPath $reqTxt -ErrorAction SilentlyContinue
+  $filtered = @()
+  foreach ($line in $raw) {
+    $t = $line.Trim()
+    if ($t -eq "" -or $t.StartsWith("#")) { $filtered += $line; continue }
+    $lower = $t.ToLowerInvariant()
+    if ($lower -match "^(torch|torchvision|torchaudio)\b") { continue }
+    if ($lower -match "^(transformers|tokenizers|huggingface-hub)\b") { continue }
+    if ($lower -match "^numpy\b") { continue } # avoid forcing a build-from-source downgrade
+    $filtered += $line
+  }
+  $tmpReq = Join-Path $Root "requirements.filtered.txt"
+  Set-Content -LiteralPath $tmpReq -Value $filtered -Encoding UTF8
+  Write-Host "Installing filtered requirements (skipping torch/vision/audio/transformers/tokenizers/hf-hub/numpy)…"
+  & $venvPy -m pip install --upgrade --no-cache-dir -r "$tmpReq"
+} else {
+  # Minimal extras
+  & $venvPy -m pip install --upgrade --no-cache-dir EbookLib beautifulsoup4 pypdf python-docx requests PySide6
+}
+
+# ======================================================
+# 4) Final verification (don’t use heredocs; run simple -c blocks)
+# ======================================================
+try {
+  $torchReport = & $venvPy -c "import json,torch; print(json.dumps({'torch':getattr(torch,'__version__','?'),'build_cuda':getattr(getattr(torch,'version',None),'cuda',None),'cuda_available':bool(getattr(torch,'cuda',None) and torch.cuda.is_available())}))"
+  Write-Host "Torch report: $torchReport"
+} catch { Write-Host "Torch report: (unavailable)" }
+
+try {
+  & $venvPy -c "import transformers; from transformers import AlbertModel; print('Transformers OK:', transformers.__version__)"
+} catch {
+  Write-Host "WARNING: Transformers import check failed. Reinstalling compatible pins…"
+  & $venvPy -m pip install --force-reinstall --no-deps "transformers==4.55.0" "tokenizers==0.21.4" "huggingface-hub==0.34.4"
+}
+
+Write-Host "[OK] Setup finished. You can close this window and run start_audiobooks.bat."
