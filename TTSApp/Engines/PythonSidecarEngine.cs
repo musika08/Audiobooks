@@ -307,18 +307,12 @@ namespace TTSApp
 
                 Progress(null); // extraction has no easy %
                 Report("Extracting Python...");
-                using (var stream = File.OpenRead(archive))
-                using (var reader = ReaderFactory.Open(stream))
+                // .tar.gz = gzip(tar). Decompress the gzip layer, then extract the tar with the
+                // built-in TarFile (SharpCompress mishandles .tar.gz and yields the raw tar blob).
+                using (var fs = File.OpenRead(archive))
+                using (var gz = new System.IO.Compression.GZipStream(fs, System.IO.Compression.CompressionMode.Decompress))
                 {
-                    while (reader.MoveToNextEntry())
-                    {
-                        if (!reader.Entry.IsDirectory)
-                            reader.WriteEntryToDirectory(RuntimeDir, new ExtractionOptions
-                            {
-                                ExtractFullPath = true,
-                                Overwrite = true
-                            });
-                    }
+                    System.Formats.Tar.TarFile.ExtractToDirectory(gz, RuntimeDir, overwriteFiles: true);
                 }
             }
             finally
