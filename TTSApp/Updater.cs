@@ -12,7 +12,7 @@ namespace TTSApp
     // Pulls the latest release from GitHub and updates the app in place (via a relaunch script).
     public static class Updater
     {
-        public const string AppVersion = "1.0.8";
+        public const string AppVersion = "1.0.9";
         private const string LatestReleaseApi = "https://api.github.com/repos/musika08/Audiobooks/releases/latest";
 
         public static async Task CheckForUpdatesAsync()
@@ -101,13 +101,23 @@ namespace TTSApp
             string appDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
             string exe = Path.Combine(appDir, "TTSApp.exe");
 
-            // A batch script waits for this process to exit, copies the new files over, relaunches, and self-deletes.
+            int pid = Environment.ProcessId;
+
+            // A batch script waits for THIS process to fully exit (so no DLLs are locked), copies the
+            // new files over, relaunches, and self-deletes. Waiting on the PID prevents the partial
+            // overwrite that corrupts the install (0xc0000005 on next launch).
             string bat = Path.Combine(work, "apply_update.bat");
             string script =
 $@"@echo off
-echo Updating AI Audiobook Studio...
-timeout /t 2 /nobreak >nul
-robocopy ""{extractDir}"" ""{appDir}"" /E /IS /IT /NFL /NDL /NJH /NJS /NP >nul
+echo Updating AI Audiobook Studio. Please wait...
+:waitloop
+tasklist /fi ""PID eq {pid}"" 2>nul | find ""{pid}"" >nul
+if not errorlevel 1 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+timeout /t 1 /nobreak >nul
+robocopy ""{extractDir}"" ""{appDir}"" /E /IS /IT /R:5 /W:2 /NFL /NDL /NJH /NJS /NP >nul
 start """" ""{exe}""
 rmdir /s /q ""{work}""
 ";
