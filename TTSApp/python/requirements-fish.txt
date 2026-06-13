@@ -1,0 +1,7 @@
+# Fish / OpenAudio (experimental) — installed into its own venv (.venv-fish-opus)
+# torch is installed separately from the CUDA index by the app.
+# Adjust to the installed fish-speech version; the server's FishEngine wraps it defensively.
+fish-speech
+fastapi
+uvicorn
+numpy

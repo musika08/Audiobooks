@@ -43,9 +43,19 @@ namespace TTSApp
             "https://github.com/astral-sh/python-build-standalone/releases/download/20240814/cpython-3.11.9+20240814-x86_64-pc-windows-msvc-install_only.tar.gz";
 
         private static string ScriptDir => Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "python");
-        private static string VenvDir => Path.Combine(ScriptDir, ".venv");
-        private static string VenvPython => Path.Combine(VenvDir, "Scripts", "python.exe");
-        private static string DepsMarker => Path.Combine(VenvDir, ".deps_ok");
+
+        // Each engine gets its own venv so conflicting Python deps (e.g. transformers versions
+        // for coqui-tts vs chatterbox-tts) never collide.
+        private static string VenvDirFor(string model) => Path.Combine(ScriptDir, ".venv-" + model);
+        private static string VenvPythonFor(string model) => Path.Combine(VenvDirFor(model), "Scripts", "python.exe");
+        private static string DepsMarkerFor(string model) => Path.Combine(VenvDirFor(model), ".deps_ok");
+
+        private string VenvDir => VenvDirFor(_modelName);
+        private string VenvPython => VenvPythonFor(_modelName);
+        private string DepsMarker => DepsMarkerFor(_modelName);
+        private string EngineKey => _modelName switch { "chatterbox" => "chatterbox", "fish-opus" => "fish", _ => "xtts" };
+        private string RequirementsFile => Path.Combine(ScriptDir, $"requirements-{EngineKey}.txt");
+
         private static string RuntimeDir => Path.Combine(ScriptDir, "runtime");
         private static string EmbeddedPython => Path.Combine(RuntimeDir, "python", "python.exe");
         private static string SetupLog => Path.Combine(ScriptDir, "setup.log");
@@ -69,8 +79,9 @@ namespace TTSApp
             _initialized = true;
         }
 
-        // True when the venv/deps haven't been installed yet (first GPU run on this machine).
-        public static bool NeedsFirstRunSetup() => !(File.Exists(VenvPython) && File.Exists(DepsMarker));
+        // True when this engine's venv/deps haven't been installed yet.
+        public static bool NeedsFirstRunSetup(string modelName) =>
+            !(File.Exists(VenvPythonFor(modelName)) && File.Exists(DepsMarkerFor(modelName)));
 
         private static void Report(string msg)
         {
@@ -198,13 +209,13 @@ namespace TTSApp
         {
             if (File.Exists(VenvPython) && File.Exists(DepsMarker)) return;
 
-            string requirements = Path.Combine(ScriptDir, "requirements.txt");
+            string requirements = RequirementsFile;
             if (!File.Exists(requirements))
-                throw new FileNotFoundException($"requirements.txt not found: {requirements}");
+                throw new FileNotFoundException($"Requirements file not found: {requirements}");
 
             if (!File.Exists(VenvPython))
             {
-                Report("Setting up Python environment (one-time)...");
+                Report($"Setting up Python environment for {_modelName} (one-time)...");
                 string basePython = FindBasePython();
                 RunStep(basePython, $"-m venv \"{VenvDir}\"", "Creating virtual environment");
             }
@@ -212,7 +223,7 @@ namespace TTSApp
             RunStep(VenvPython, "-m pip install --upgrade pip", "Upgrading pip");
             Report("Installing PyTorch (CUDA 12.1) — large download, several minutes...");
             RunStep(VenvPython, $"-m pip install torch --index-url {TorchIndexUrl}", "Installing PyTorch (CUDA)");
-            Report("Installing TTS dependencies — this can take a while...");
+            Report($"Installing {_modelName} dependencies — this can take a while...");
             RunStep(VenvPython, $"-m pip install -r \"{requirements}\"", "Installing requirements");
 
             File.WriteAllText(DepsMarker, "cu121");

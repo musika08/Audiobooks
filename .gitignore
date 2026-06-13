@@ -9,6 +9,7 @@ publish/
 
 # GPU sidecar runtime (created on the user's machine)
 TTSApp/python/.venv/
+TTSApp/python/.venv-*/
 TTSApp/python/runtime/
 TTSApp/python/cache/
 TTSApp/python/__pycache__/

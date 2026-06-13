@@ -363,7 +363,7 @@ namespace TTSApp
                 string label = (item.Content?.ToString() ?? newModel);
 
                 // #25 — first-run wizard: warn about the one-time multi-GB setup before starting.
-                if (PythonSidecarEngine.NeedsFirstRunSetup())
+                if (PythonSidecarEngine.NeedsFirstRunSetup(newModel))
                 {
                     var go = MessageBox.Show(
                         $"First-time setup for {label}.\n\n" +
@@ -1885,13 +1885,16 @@ namespace TTSApp
                 content = Regex.Replace(content, @"\n\s*\n", "\n\n");
                 content = content.Trim();
 
-                // Extract title
-                string title = "Imported Chapter";
-                var titleMatch = Regex.Match(html, @"<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase);
-                if (titleMatch.Success)
+                // Remove web junk: echoed book/site header lines + repeated "Chapter N" tokens.
+                content = CleanImportedContent(content);
+
+                // Prefer the chapter heading found in the content; fall back to the page <title>.
+                string title = ExtractChapterTitleFromContent(content) ?? "Imported Chapter";
+                if (title == "Imported Chapter")
                 {
-                    title = System.Net.WebUtility.HtmlDecode(titleMatch.Groups[1].Value).Trim();
-                    title = Regex.Replace(title, @"\s*[-|]\s*.*$", ""); // strip site name
+                    var titleMatch = Regex.Match(html, @"<title[^>]*>(.*?)</title>", RegexOptions.IgnoreCase);
+                    if (titleMatch.Success)
+                        title = CleanWebTitle(System.Net.WebUtility.HtmlDecode(titleMatch.Groups[1].Value));
                 }
 
                 SaveStateForUndo();
@@ -1920,6 +1923,65 @@ namespace TTSApp
             {
                 SetBusy(false, "Ready");
             }
+        }
+
+        // Clean a page <title> into just the chapter: drop the book-name prefix before "Chapter N",
+        // and strip a trailing site name after a separator (- – — |).
+        private static string CleanWebTitle(string raw)
+        {
+            string t = raw.Trim();
+
+            // Drop everything before "Chapter N" (removes the book name prefix).
+            var ch = Regex.Match(t, @"(chapter\s+\d+.*)$", RegexOptions.IgnoreCase);
+            if (ch.Success) t = ch.Groups[1].Value.Trim();
+
+            // Strip a trailing site name: remove the last "<sep> <segment>" when a separator is present.
+            // (Keeps "Chapter 1: Crimson" but trims "Chapter 1: Crimson – SiteName".)
+            if (Regex.IsMatch(t, @"[|\-–—]"))
+                t = Regex.Replace(t, @"\s*[|\-–—]\s*[^|\-–—]*$", "").Trim();
+
+            return string.IsNullOrWhiteSpace(t) ? raw.Trim() : t;
+        }
+
+        // Collapse repeated "Chapter N" tokens: "Chapter 1 : Chapter 1 Chapter 1. A Third" -> "Chapter 1. A Third".
+        private static string CollapseChapterRepeats(string s)
+        {
+            return Regex.Replace(s, @"(?:Chapter\s+\d+\s*[:.\-–—]?\s*){2,}", m =>
+            {
+                var num = Regex.Match(m.Value, @"\d+").Value;
+                return $"Chapter {num}. ";
+            }, RegexOptions.IgnoreCase);
+        }
+
+        // Strip echoed book/site header lines and collapse repeated chapter labels from imported web text.
+        private static string CleanImportedContent(string content)
+        {
+            content = CollapseChapterRepeats(content);
+            var lines = content.Replace("\r\n", "\n").Split('\n').ToList();
+
+            int i = 0;
+            while (i < lines.Count)
+            {
+                var t = lines[i].Trim();
+                if (t.Length == 0) { lines.RemoveAt(i); continue; }
+                // A "Book - Chapter N - Site" header line has 2+ dash/pipe separators → drop it.
+                if (Regex.Matches(t, @"\s[-–—|]\s").Count >= 2) { lines.RemoveAt(i); continue; }
+                break; // first real line reached
+            }
+            return string.Join("\n", lines).Trim();
+        }
+
+        // Pull the chapter title from a heading line inside the content (e.g. "Chapter 1. A Third-Rate Warrior...").
+        private static string? ExtractChapterTitleFromContent(string content)
+        {
+            var m = Regex.Match(content, @"^.*?chapter\s+\d+.*$", RegexOptions.Multiline | RegexOptions.IgnoreCase);
+            if (!m.Success) return null;
+            var line = m.Value.Trim();
+            // Drop a leading book-name prefix before "Chapter N".
+            var ch = Regex.Match(line, @"(chapter\s+\d+.*)$", RegexOptions.IgnoreCase);
+            if (ch.Success) line = ch.Groups[1].Value.Trim();
+            if (line.Length > 80) line = line.Substring(0, 80).TrimEnd() + "…";
+            return string.IsNullOrWhiteSpace(line) ? null : line;
         }
 
         // Find a "next chapter" link: prefer rel="next", else an anchor whose text contains "next".

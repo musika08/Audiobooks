@@ -18,6 +18,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Ship the Python sidecar next to the exe -->
-    <None Include="python\**\*" CopyToOutputDirectory="PreserveNewest" Exclude="python\.venv\**;python\runtime\**;python\cache\**;python\**\__pycache__\**;python\setup.log;python\server.pid" />
+    <None Include="python\**\*" CopyToOutputDirectory="PreserveNewest" Exclude="python\.venv*\**;python\runtime\**;python\cache\**;python\**\__pycache__\**;python\setup.log;python\server.pid" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,9 @@
+# XTTS v2 (Coqui) — installed into its own venv (.venv-xtts-v2)
+# torch is installed separately from the CUDA index by the app.
+coqui-tts
+# Pin transformers to a version that still has `isin_mps_friendly` (coqui-tts needs it;
+# newer transformers removed it, which caused the ImportError on first run).
+transformers==4.46.3
+fastapi
+uvicorn
+numpy

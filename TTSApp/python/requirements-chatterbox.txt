@@ -1,0 +1,6 @@
+# Chatterbox (Resemble) — installed into its own venv (.venv-chatterbox)
+# torch is installed separately from the CUDA index by the app.
+chatterbox-tts
+fastapi
+uvicorn
+numpy
