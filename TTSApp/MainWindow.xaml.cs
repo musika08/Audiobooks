@@ -88,6 +88,7 @@ namespace TTSApp
                         Dispatcher.Invoke(() =>
                         {
                             ProgressBar.Value = p * 100;
+                            LblProgress.Text = $"{p * 100:0}%";
                             TxtStatus.Text = $"Downloading model... {p:P0}";
                         });
                     });
@@ -392,10 +393,12 @@ namespace TTSApp
                     {
                         ProgressBar.IsIndeterminate = false;
                         ProgressBar.Value = f * 100;
+                        LblProgress.Text = $"{f * 100:0}%";
                     }
                     else
                     {
                         ProgressBar.IsIndeterminate = true;
+                        LblProgress.Text = "";
                     }
                 });
                 try
@@ -1305,6 +1308,7 @@ namespace TTSApp
                             TxtChapterTitle.Text = $"🔊 {chapter.Title}";
                             TxtPreview.Text = text.Length > 4000 ? text.Substring(0, 4000) + "\n\n..." : text;
                             ProgressBar.Value = i;
+                            LblProgress.Text = $"{i + 1}/{selected.Count}";
                             ChaptersList.SelectedItem = chapter;
                             ChaptersList.ScrollIntoView(chapter);
                             _isUpdatingText = false;
@@ -1475,7 +1479,7 @@ namespace TTSApp
         private void SetBusy(bool busy, string status)
         {
             TxtStatus.Text = status;
-            if (!busy) ProgressBar.Value = 0;
+            if (!busy) { ProgressBar.Value = 0; ProgressBar.IsIndeterminate = false; LblProgress.Text = ""; }
             // Block actions that need a ready engine while a load/convert is in progress.
             BtnPreview.IsEnabled = !busy;
             BtnConvert.IsEnabled = !busy;

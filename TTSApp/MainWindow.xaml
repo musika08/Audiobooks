@@ -463,16 +463,26 @@
         </Grid>
 
         <!-- BOTTOM STATUS BAR -->
-        <Border Grid.Row="3" Background="{DynamicResource BrushPanelBg}" Padding="12,8" 
+        <Border Grid.Row="3" Background="{DynamicResource BrushPanelBg}" Padding="14,8"
                 BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,1,0,0">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="180"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock x:Name="TxtStatus" Text="Ready" Foreground="{DynamicResource BrushTextSecondary}" 
-                           FontSize="11" VerticalAlignment="Center"/>
-                <ProgressBar x:Name="ProgressBar" Grid.Column="1" Height="5" VerticalAlignment="Center"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" x:Name="TxtStatus" Text="Ready"
+                           Foreground="{DynamicResource BrushTextSecondary}"
+                           FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,0,5"/>
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ProgressBar Grid.Column="0" x:Name="ProgressBar" Height="10" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" x:Name="LblProgress" Text="" Width="48" TextAlignment="Right"
+                               Foreground="{DynamicResource BrushTextPrimary}" FontSize="12" FontWeight="SemiBold"
+                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

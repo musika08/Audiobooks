@@ -74,7 +74,7 @@ namespace TTSApp
             Progress(null); // indeterminate "working" until/unless a step reports real %
             EnsureDependencies();
             EnsureServerRunning();
-            WaitForHealth(TimeSpan.FromMinutes(10));
+            WaitForHealth(hardCap: TimeSpan.FromMinutes(45), stallLimit: TimeSpan.FromMinutes(8));
             _speakers = FetchSpeakers();
             _initialized = true;
         }
@@ -405,10 +405,27 @@ namespace TTSApp
             return "";
         }
 
-        private void WaitForHealth(TimeSpan timeout)
+        // Wait for the server to answer /health. Won't fail while the model is actively downloading
+        // (cache still growing); only fails after `stallLimit` of no progress, or the `hardCap`.
+        private void WaitForHealth(TimeSpan hardCap, TimeSpan stallLimit)
         {
-            var deadline = DateTime.UtcNow + timeout;
-            while (DateTime.UtcNow < deadline)
+            long expected = _modelName == "xtts-v2" ? 1_900_000_000L
+                          : _modelName == "chatterbox" ? 1_200_000_000L
+                          : 1_500_000_000L;
+
+            // Coqui XTTS downloads to %LOCALAPPDATA%\tts; HF/torch caches go to python\cache. Watch both.
+            string[] watchDirs =
+            {
+                Path.Combine(ScriptDir, "cache"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "tts"),
+            };
+
+            var hardDeadline = DateTime.UtcNow + hardCap;
+            long lastSize = -1;
+            DateTime lastProgress = DateTime.UtcNow;
+            bool everDownloaded = false;
+
+            while (DateTime.UtcNow < hardDeadline)
             {
                 if (_serverProcess is { HasExited: true })
                 {
@@ -423,9 +440,52 @@ namespace TTSApp
                     if (resp.IsSuccessStatusCode) return;
                 }
                 catch { /* not up yet */ }
+
+                long size = 0;
+                foreach (var d in watchDirs) size += DirSize(d);
+
+                if (size > lastSize)
+                {
+                    // Download is progressing → reset the stall timer.
+                    lastProgress = DateTime.UtcNow;
+                    lastSize = size;
+                    if (size > 0)
+                    {
+                        everDownloaded = true;
+                        Report($"Downloading model — {size / 1_000_000.0:N0} MB...");
+                        Progress(Math.Min(0.97, (double)size / expected));
+                    }
+                }
+                else
+                {
+                    var idle = DateTime.UtcNow - lastProgress;
+                    if (everDownloaded)
+                        Report($"Model downloaded ({size / 1_000_000.0:N0} MB) — loading into the GPU...");
+                    // Only give up if nothing has progressed for the whole stall window.
+                    if (idle > stallLimit)
+                        throw new TimeoutException(
+                            "Sidecar server did not become healthy and has stopped making progress. " +
+                            "Check python\\setup.log for details.");
+                }
+
                 Thread.Sleep(1000);
             }
-            throw new TimeoutException("Sidecar server did not become healthy in time.");
+            throw new TimeoutException("Sidecar server did not become healthy within the time limit.");
+        }
+
+        private static long DirSize(string dir)
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) return 0;
+                long total = 0;
+                foreach (var f in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+                {
+                    try { total += new FileInfo(f).Length; } catch { }
+                }
+                return total;
+            }
+            catch { return 0; }
         }
 
         private List<string> FetchSpeakers()
