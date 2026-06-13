@@ -291,9 +291,10 @@ namespace TTSApp
             Directory.CreateDirectory(RuntimeDir);
             string archive = Path.Combine(RuntimeDir, "python.tar.gz");
 
+            long archiveBytes = 0;
             try
             {
-                Report("Python not found — downloading a private copy (~30 MB)...");
+                Report("Python not found — downloading a private copy (~40 MB)...");
                 using (var resp = Http.GetAsync(EmbeddedPythonUrl, HttpCompletionOption.ResponseHeadersRead)
                            .GetAwaiter().GetResult())
                 {
@@ -313,7 +314,13 @@ namespace TTSApp
                     }
                 }
 
-                Progress(null); // extraction has no easy %
+                archiveBytes = new FileInfo(archive).Length;
+                Log($"Downloaded portable Python archive: {archiveBytes:N0} bytes");
+                if (archiveBytes < 5_000_000)
+                    throw new Exception($"download was only {archiveBytes:N0} bytes (expected ~40 MB) — " +
+                                        "a proxy/firewall is probably blocking GitHub release downloads.");
+
+                Progress(null);
                 Report("Extracting Python...");
                 // .tar.gz = gzip(tar). Decompress the gzip layer, then extract the tar with the
                 // built-in TarFile (SharpCompress mishandles .tar.gz and yields the raw tar blob).
@@ -322,6 +329,11 @@ namespace TTSApp
                 {
                     System.Formats.Tar.TarFile.ExtractToDirectory(gz, RuntimeDir, overwriteFiles: true);
                 }
+                Log($"Extracted. python.exe present: {File.Exists(EmbeddedPython)}");
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Could not set up the bundled Python 3.11: {ex.Message}", ex);
             }
             finally
             {
@@ -329,7 +341,9 @@ namespace TTSApp
             }
 
             if (!File.Exists(EmbeddedPython))
-                throw new Exception($"Portable Python download/extract failed; expected {EmbeddedPython}.");
+                throw new Exception(
+                    $"Bundled Python extracted but python.exe is missing (archive was {archiveBytes:N0} bytes). " +
+                    $"Expected: {EmbeddedPython}. See python\\setup.log.");
 
             return EmbeddedPython;
         }
