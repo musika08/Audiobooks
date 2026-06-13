@@ -1,11 +1,7 @@
-# Chatterbox (Resemble) — installed into its own venv (.venv-chatterbox)
-# torch + torchaudio matched from the CUDA index (avoids torchaudio "WinError 127").
---extra-index-url https://download.pytorch.org/whl/cu121
-torch==2.4.1
-torchaudio==2.4.1
+# Chatterbox (Resemble) — own venv (.venv-chatterbox).
+# chatterbox-tts pins torch==2.6.0 (CUDA 12.4) and numpy<1.26, so we let it choose and
+# just point pip at the cu124 wheel index (don't pin torch/numpy ourselves).
+--extra-index-url https://download.pytorch.org/whl/cu124
 chatterbox-tts
 fastapi
 uvicorn
-numpy>=1.26
-# Optional de-reverb/denoise for cloned output (used only when enabled in Settings).
-deepfilternet

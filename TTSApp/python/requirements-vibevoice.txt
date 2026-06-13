@@ -1,11 +1,9 @@
-# VibeVoice (Microsoft, experimental) — installed into its own venv (.venv-vibevoice)
-# torch + torchaudio matched from the CUDA index (avoids torchaudio "WinError 127").
+# VibeVoice (Microsoft, experimental) — own venv (.venv-vibevoice).
+# Install from the community repo ZIP so git is NOT required on the user's machine.
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch==2.4.1
 torchaudio==2.4.1
-# Community fork (the official repo was taken down). 'sdpa' attention is used so flash-attn
-# is NOT required (it rarely builds on Windows).
-vibevoice @ git+https://github.com/vibevoice-community/VibeVoice.git
+vibevoice @ https://github.com/vibevoice-community/VibeVoice/archive/refs/heads/main.zip
 transformers
 accelerate
 fastapi

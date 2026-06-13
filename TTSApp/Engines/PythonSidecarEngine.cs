@@ -237,10 +237,9 @@ namespace TTSApp
             }
 
             RunStep(VenvPython, "-m pip install --upgrade pip", "Upgrading pip");
-            Report("Installing PyTorch + torchaudio (CUDA 12.1) — large download, several minutes...");
-            // torch and torchaudio from the SAME index so torchaudio's C extension matches torch.
-            RunStep(VenvPython, $"-m pip install torch==2.4.1 torchaudio==2.4.1 --index-url {TorchIndexUrl}", "Installing PyTorch (CUDA)");
-            Report($"Installing {_modelName} dependencies — this can take a while...");
+            // Each engine's requirements file declares its own torch/torchaudio version + CUDA index
+            // (chatterbox needs torch 2.6, coqui needs 2.4), so we don't pre-install a fixed torch here.
+            Report($"Installing {_modelName} dependencies (incl. PyTorch) — large download, several minutes...");
             RunStep(VenvPython, $"-m pip install -r \"{requirements}\"", "Installing requirements");
 
             File.WriteAllText(DepsMarker, "cu121");
