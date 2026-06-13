@@ -10,4 +10,4 @@ transformers
 accelerate
 fastapi
 uvicorn
-numpy
+numpy>=1.26

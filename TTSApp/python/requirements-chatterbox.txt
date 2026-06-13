@@ -6,6 +6,6 @@ torchaudio==2.4.1
 chatterbox-tts
 fastapi
 uvicorn
-numpy
+numpy>=1.26
 # Optional de-reverb/denoise for cloned output (used only when enabled in Settings).
 deepfilternet

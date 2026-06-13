@@ -247,40 +247,55 @@ namespace TTSApp
             Report("Python environment ready.");
         }
 
-        // Locate a base interpreter to build the venv from. Prefers a system Python in the
-        // 3.10–3.11 range (TTS deps don't build on 3.12+); otherwise uses the bundled 3.11.
+        // Locate a base interpreter to build the venv from. Prefers a 3.10/3.11 launcher, but
+        // accepts any system Python (incl. 3.12) before resorting to the bundled portable download.
         private static string FindBasePython()
         {
-            // Prefer a 3.11 launcher explicitly, then any python, but reject 3.12+.
-            foreach (var (file, args) in new[] { ("py", "-3.11"), ("py", "-3.10"), ("py", "-3"), ("python", "") })
+            // 1) Prefer an explicit 3.11/3.10 if the py launcher exposes one.
+            foreach (var (file, args) in new[] { ("py", "-3.11"), ("py", "-3.10") })
             {
-                try
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = file,
-                        Arguments = $"{args} --version".Trim(),
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    };
-                    using var p = Process.Start(psi);
-                    if (p == null) continue;
-                    string verOut = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
-                    p.WaitForExit(10000);
-                    if (p.ExitCode != 0) continue;
-
-                    // Parse "Python 3.11.9" — only accept 3.10/3.11 (TTS packages fail to build on 3.12+).
-                    var vm = Regex.Match(verOut, @"Python\s+3\.(\d+)");
-                    if (vm.Success && int.TryParse(vm.Groups[1].Value, out int minor) && (minor == 10 || minor == 11))
-                        return string.IsNullOrEmpty(args) ? file : $"{file}|{args}";
-                }
-                catch { /* try next */ }
+                var ok = TryPython(file, args, requireOldVersion: true);
+                if (ok != null) return ok;
             }
-            // System Python missing or too new (3.12+) → use the bundled portable 3.11.
-            Report("Using a bundled Python 3.11 (system Python is missing or too new for the TTS packages)...");
+            // 2) Otherwise use ANY system Python (e.g. 3.12) — this is the path that worked before.
+            foreach (var (file, args) in new[] { ("py", "-3"), ("python", "") })
+            {
+                var ok = TryPython(file, args, requireOldVersion: false);
+                if (ok != null) return ok;
+            }
+            // 3) No system Python at all → bundled portable 3.11.
+            Report("No system Python found — using a bundled Python 3.11...");
             return EnsureEmbeddedPython();
+        }
+
+        private static string? TryPython(string file, string args, bool requireOldVersion)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = file,
+                    Arguments = $"{args} --version".Trim(),
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var p = Process.Start(psi);
+                if (p == null) return null;
+                string verOut = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+                p.WaitForExit(10000);
+                if (p.ExitCode != 0) return null;
+
+                if (requireOldVersion)
+                {
+                    var vm = Regex.Match(verOut, @"Python\s+3\.(\d+)");
+                    if (!(vm.Success && int.TryParse(vm.Groups[1].Value, out int minor) && (minor == 10 || minor == 11)))
+                        return null;
+                }
+                return string.IsNullOrEmpty(args) ? file : $"{file}|{args}";
+            }
+            catch { return null; }
         }
 
         // Download + extract a private CPython when the machine has no Python.
