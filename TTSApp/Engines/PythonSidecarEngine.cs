@@ -221,8 +221,9 @@ namespace TTSApp
             }
 
             RunStep(VenvPython, "-m pip install --upgrade pip", "Upgrading pip");
-            Report("Installing PyTorch (CUDA 12.1) — large download, several minutes...");
-            RunStep(VenvPython, $"-m pip install torch --index-url {TorchIndexUrl}", "Installing PyTorch (CUDA)");
+            Report("Installing PyTorch + torchaudio (CUDA 12.1) — large download, several minutes...");
+            // torch and torchaudio from the SAME index so torchaudio's C extension matches torch.
+            RunStep(VenvPython, $"-m pip install torch torchaudio --index-url {TorchIndexUrl}", "Installing PyTorch (CUDA)");
             Report($"Installing {_modelName} dependencies — this can take a while...");
             RunStep(VenvPython, $"-m pip install -r \"{requirements}\"", "Installing requirements");
 

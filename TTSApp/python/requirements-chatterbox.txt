@@ -1,5 +1,8 @@
 # Chatterbox (Resemble) — installed into its own venv (.venv-chatterbox)
-# torch is installed separately from the CUDA index by the app.
+# torch + torchaudio matched from the CUDA index (avoids torchaudio "WinError 127").
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch
+torchaudio
 chatterbox-tts
 fastapi
 uvicorn
