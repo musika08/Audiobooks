@@ -6,7 +6,9 @@
 
 # torch is installed separately from the CUDA index by the app (do NOT list it here —
 # listing it makes pip re-resolve torch and can hang for many minutes).
-TTS>=0.22.0
+# coqui-tts is the maintained fork of the original (discontinued) "TTS" package and
+# supports Python 3.12+. It keeps the same `from TTS.api import TTS` import.
+coqui-tts
 chatterbox-tts
 fastapi
 uvicorn

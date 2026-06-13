@@ -40,6 +40,8 @@ namespace TTSApp
             CmbTheme.SelectedItem = CmbTheme.Items.Cast<ComboBoxItem>()
                 .FirstOrDefault(i => i.Content.ToString() == AppSettings.Theme);
 
+            LblVersion.Text = $"Current: v{Updater.AppVersion}";
+
             // Populate dialog voice dropdown
             CmbDialogVoice.Items.Clear();
             // We need speaker names from MainWindow's TTS engine, but this window doesn't have access.
@@ -145,6 +147,14 @@ namespace TTSApp
         private void BtnClearOutro_Click(object sender, RoutedEventArgs e) => TxtOutroPath.Text = "";
         private void BtnBrowseBackground_Click(object sender, RoutedEventArgs e) { var f = PickAudioFile(); if (f != null) TxtBackgroundPath.Text = f; }
         private void BtnClearBackground_Click(object sender, RoutedEventArgs e) => TxtBackgroundPath.Text = "";
+
+        private async void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            BtnCheckUpdate.IsEnabled = false;
+            BtnCheckUpdate.Content = "Checking...";
+            try { await Updater.CheckForUpdatesAsync(); }
+            finally { BtnCheckUpdate.Content = "Check for Updates"; BtnCheckUpdate.IsEnabled = true; }
+        }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {

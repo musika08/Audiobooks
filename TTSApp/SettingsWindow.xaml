@@ -235,6 +235,23 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Updates -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Updates" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="BtnCheckUpdate" Content="Check for Updates" Width="150" Height="32"
+                                    Background="{DynamicResource BrushAccentBlue}" Foreground="White"
+                                    Click="BtnCheckUpdate_Click"/>
+                            <TextBlock x:Name="LblVersion" Text="" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Foreground="{DynamicResource BrushTextMuted}" FontSize="12"/>
+                        </StackPanel>
+                        <TextBlock Text="Pulls the latest release from GitHub and restarts the app."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Theme -->
                 <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,4">
                     <StackPanel>
