@@ -16,7 +16,11 @@
         <KeyBinding Key="N" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.New}"/>
         <KeyBinding Key="Z" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Undo}"/>
         <KeyBinding Key="Y" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Redo}"/>
+        <KeyBinding Key="Z" Modifiers="Ctrl+Shift" Command="{x:Static local:MainWindow.UndoAllCommand}"/>
+        <KeyBinding Key="Y" Modifiers="Ctrl+Shift" Command="{x:Static local:MainWindow.RedoAllCommand}"/>
         <KeyBinding Key="F" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Find}"/>
+        <KeyBinding Key="H" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Replace}"/>
+        <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{x:Static local:MainWindow.ReplaceAllCommand}"/>
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="CommandBinding_Open_Executed"/>
@@ -25,6 +29,10 @@
         <CommandBinding Command="{x:Static ApplicationCommands.Undo}" Executed="CommandBinding_Undo_Executed"/>
         <CommandBinding Command="{x:Static ApplicationCommands.Redo}" Executed="CommandBinding_Redo_Executed"/>
         <CommandBinding Command="{x:Static ApplicationCommands.Find}" Executed="CommandBinding_Find_Executed"/>
+        <CommandBinding Command="{x:Static ApplicationCommands.Replace}" Executed="CommandBinding_Replace_Executed"/>
+        <CommandBinding Command="{x:Static local:MainWindow.UndoAllCommand}" Executed="CommandBinding_UndoAll_Executed"/>
+        <CommandBinding Command="{x:Static local:MainWindow.RedoAllCommand}" Executed="CommandBinding_RedoAll_Executed"/>
+        <CommandBinding Command="{x:Static local:MainWindow.ReplaceAllCommand}" Executed="CommandBinding_ReplaceAll_Executed"/>
     </Window.CommandBindings>
     <Grid>
         <Grid.RowDefinitions>
@@ -57,13 +65,17 @@
             </MenuItem>
             <MenuItem Header="_Edit">
                 <MenuItem Header="_Undo" Click="MenuUndo_Click" InputGestureText="Ctrl+Z"/>
+                <MenuItem Header="Undo _All" Click="MenuUndoAll_Click" InputGestureText="Ctrl+Shift+Z"/>
                 <MenuItem Header="_Redo" Click="MenuRedo_Click" InputGestureText="Ctrl+Y"/>
+                <MenuItem Header="Redo A_ll" Click="MenuRedoAll_Click" InputGestureText="Ctrl+Shift+Y"/>
                 <Separator/>
                 <MenuItem Header="Cu_t" Click="MenuCut_Click" InputGestureText="Ctrl+X"/>
                 <MenuItem Header="_Copy" Click="MenuCopy_Click" InputGestureText="Ctrl+C"/>
                 <MenuItem Header="_Paste" Click="MenuPaste_Click" InputGestureText="Ctrl+V"/>
                 <Separator/>
                 <MenuItem Header="_Find" Click="MenuFind_Click" InputGestureText="Ctrl+F"/>
+                <MenuItem Header="_Replace..." Click="MenuReplace_Click" InputGestureText="Ctrl+H"/>
+                <MenuItem Header="Replace A_ll..." Click="MenuReplaceAll_Click" InputGestureText="Ctrl+Shift+H"/>
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Mini Player" Click="MenuMiniPlayer_Click"/>
@@ -91,9 +103,16 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Col 0: Open button -->
-                <Button Grid.Column="0" x:Name="BtnBrowse" Content="📁  Open" Width="96" Height="34"
+                <Button Grid.Column="0" x:Name="BtnBrowse" Width="96" Height="34"
                         Background="{DynamicResource BrushAccentBlue}" Foreground="White" FontSize="13"
-                        Click="BtnBrowse_Click"/>
+                        Click="BtnBrowse_Click">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="16" Height="16" Margin="0,0,7,0">
+                            <Path Style="{StaticResource LucideIcon}" Stroke="White" Data="{StaticResource GeoFolderOpen}"/>
+                        </Viewbox>
+                        <TextBlock Text="Open" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- Col 1: File path -->
                 <TextBlock Grid.Column="1" x:Name="TxtFilePath" Text="No file selected"
@@ -110,7 +129,6 @@
                                    FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
                         <ComboBox x:Name="CmbModel" Width="160" Height="32" FontSize="12"
                                   SelectionChanged="CmbModel_SelectionChanged">
-                            <ComboBoxItem Tag="kokoro-en-v0_19">Kokoro English v0.19</ComboBoxItem>
                             <ComboBoxItem Tag="kokoro-multi-lang-v1_0">Kokoro Multi-Lang v1.0</ComboBoxItem>
                             <ComboBoxItem Tag="kokoro-multi-lang-v1_1">Kokoro Multi-Lang v1.1</ComboBoxItem>
                             <ComboBoxItem Tag="xtts-v2">XTTS v2 (GPU)</ComboBoxItem>
@@ -125,10 +143,12 @@
                                    FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
                         <StackPanel Orientation="Horizontal" Height="32">
                             <ComboBox x:Name="CmbVoice" Width="140" Height="32" FontSize="12" VerticalAlignment="Center"/>
-                            <Button x:Name="BtnCloneVoice" Content="🎤" Width="32" Height="32" Margin="4,0,0,0"
-                                    FontSize="13" Visibility="Collapsed"
+                            <Button x:Name="BtnCloneVoice" Width="32" Height="32" Margin="4,0,0,0"
+                                    Visibility="Collapsed"
                                     Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                    Click="BtnCloneVoice_Click" ToolTip="Clone voice from an audio file (GPU engines)"/>
+                                    Click="BtnCloneVoice_Click" ToolTip="Clone voice from an audio file (GPU engines)">
+                                <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoMic}"/></Viewbox>
+                            </Button>
                         </StackPanel>
                     </StackPanel>
 
@@ -182,12 +202,26 @@
 
                 <!-- Col 4: Action buttons -->
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="BtnPreview" Content="🔊  Preview" Width="106" Height="34"
+                    <Button x:Name="BtnPreview" Width="106" Height="34"
                             Background="{DynamicResource BrushAccentPurple}" Foreground="White" FontSize="13"
-                            Click="BtnPreview_Click" Margin="0,0,8,0"/>
-                    <Button x:Name="BtnConvert" Content="⚡  Convert" Width="114" Height="34"
+                            Click="BtnPreview_Click" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Width="15" Height="15" Margin="0,0,7,0">
+                                <Path Style="{StaticResource LucideIcon}" Stroke="White" Fill="White" Data="{StaticResource GeoPlay}"/>
+                            </Viewbox>
+                            <TextBlock Text="Preview" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="BtnConvert" Width="114" Height="34"
                             Background="{DynamicResource BrushAccentGreen}" Foreground="White" FontSize="13" FontWeight="Bold"
-                            Click="BtnConvert_Click"/>
+                            Click="BtnConvert_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Width="15" Height="15" Margin="0,0,7,0">
+                                <Path Style="{StaticResource LucideIcon}" Stroke="White" Data="{StaticResource GeoZap}"/>
+                            </Viewbox>
+                            <TextBlock x:Name="LblConvert" Text="Convert" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -215,24 +249,30 @@
                                Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
 
                     <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,0,8">
-                        <Button x:Name="BtnSelectAll" Content="All" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="11" Click="BtnSelectAll_Click" Margin="0,0,4,0"/>
-                        <Button x:Name="BtnSelectNone" Content="None" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="11" Click="BtnSelectNone_Click" Margin="0,0,4,0"/>
-                        <Button x:Name="BtnAddChapter" Content="＋" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="14" Click="BtnAddChapter_Click" Margin="0,0,4,0" ToolTip="Add chapter"/>
-                        <Button x:Name="BtnMoveUp" Content="▲" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="11" Click="BtnMoveUp_Click" Margin="0,0,4,0" ToolTip="Move chapter up"/>
-                        <Button x:Name="BtnMoveDown" Content="▼" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="11" Click="BtnMoveDown_Click" Margin="0,0,4,0" ToolTip="Move chapter down"/>
-                        <Button x:Name="BtnDeleteChapter" Content="🗑" Height="26"
-                                Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                FontSize="12" Click="BtnDeleteChapter_Click" ToolTip="Delete chapter"/>
+                        <Button x:Name="BtnSelectAll" Height="26" Margin="0,0,4,0"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnSelectAll_Click" ToolTip="Select all chapters">
+                            <Viewbox Width="16" Height="16"><Path Stroke="#3FB950" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="{x:Null}" Data="{StaticResource GeoCheck}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnSelectNone" Height="26" Margin="0,0,4,0"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnSelectNone_Click" ToolTip="Deselect all chapters">
+                            <Viewbox Width="15" Height="15"><Path Stroke="#F85149" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="{x:Null}" Data="{StaticResource GeoX}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnAddChapter" Height="26" Margin="0,0,4,0"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnAddChapter_Click" ToolTip="Add chapter">
+                            <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoPlus}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnMoveUp" Height="26" Margin="0,0,4,0"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnMoveUp_Click" ToolTip="Move chapter up">
+                            <Viewbox Width="13" Height="13"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriUp}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnMoveDown" Height="26" Margin="0,0,4,0"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnMoveDown_Click" ToolTip="Move chapter down">
+                            <Viewbox Width="13" Height="13"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriDown}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnDeleteChapter" Height="26"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnDeleteChapter_Click" ToolTip="Delete chapter">
+                            <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoTrash}"/></Viewbox>
+                        </Button>
                     </UniformGrid>
 
                     <TextBox x:Name="TxtChapterSearch" Grid.Row="2" Height="26" FontSize="12" Margin="0,0,0,8"
@@ -335,6 +375,26 @@
                         <TextBlock Grid.Column="0" x:Name="TxtChapterTitle" Text="📝 Chapter Content" FontSize="18"
                                    FontWeight="Bold" Foreground="{DynamicResource BrushTextPrimary}" VerticalAlignment="Center"/>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BtnPrevChapter" Width="38" Height="32" Margin="0,0,5,0"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnPrevChapter_Click" ToolTip="Previous chapter">
+                                <Viewbox Width="18" Height="18"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriLeft}"/></Viewbox>
+                            </Button>
+                            <Button x:Name="BtnNextChapter" Width="38" Height="32" Margin="0,0,10,0"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnNextChapter_Click" ToolTip="Next chapter (fetches next web page if imported from URL)">
+                                <Viewbox Width="18" Height="18"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriRight}"/></Viewbox>
+                            </Button>
+                            <Button x:Name="BtnTidy" Width="38" Height="32" Margin="0,0,5,0"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnTidy_Click" ToolTip="Tidy this chapter (fix spacing &amp; paragraphs)">
+                                <Viewbox Width="20" Height="20"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoAlignLeft}"/></Viewbox>
+                            </Button>
+                            <Button x:Name="BtnTidyAll" Width="38" Height="32" Margin="0,0,12,0"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnTidyAll_Click" ToolTip="Tidy all checked chapters">
+                                <Viewbox Width="20" Height="20"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoListChecks}"/></Viewbox>
+                            </Button>
                             <TextBlock Text="Voice:" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextMuted}"
                                        FontSize="11" Margin="0,0,6,0"/>
                             <ComboBox x:Name="CmbChapterVoice" Width="150" Height="26" FontSize="11"
@@ -353,8 +413,9 @@
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <TextBox x:Name="TxtPreview" IsReadOnly="False" TextWrapping="Wrap"
                                      FontFamily="Cambria" FontSize="14"
+                                     TextAlignment="Justify"
                                      AcceptsReturn="True" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                     Foreground="{DynamicResource BrushTextPrimary}" 
+                                     Foreground="{DynamicResource BrushTextPrimary}"
                                      TextChanged="TxtPreview_TextChanged"/>
                         </ScrollViewer>
                     </Border>

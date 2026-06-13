@@ -18,6 +18,11 @@ namespace TTSApp
 {
     public partial class MainWindow : Window
     {
+        // Custom commands for the Edit menu shortcuts that have no WPF built-in.
+        public static readonly RoutedUICommand UndoAllCommand = new("Undo All", "UndoAll", typeof(MainWindow));
+        public static readonly RoutedUICommand RedoAllCommand = new("Redo All", "RedoAll", typeof(MainWindow));
+        public static readonly RoutedUICommand ReplaceAllCommand = new("Replace All", "ReplaceAll", typeof(MainWindow));
+
         private List<ChapterItem> _chapters = new();
         private ITtsEngine _ttsEngine = new TtsEngine();
         private bool _isUpdatingText = false;
@@ -108,7 +113,7 @@ namespace TTSApp
             // where the saved sidecar selection would leave the engine uninitialized.
             if (IsSidecarModel(AppSettings.SelectedModel))
             {
-                AppSettings.SelectedModel = "kokoro-en-v0_19";
+                AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                 AppSettings.Save();
             }
 
@@ -213,6 +218,70 @@ namespace TTSApp
             CmbChapterVoice.SelectedIndex = 0;
         }
 
+        private void BtnPrevChapter_Click(object sender, RoutedEventArgs e) => StepChapter(-1);
+
+        private async void BtnNextChapter_Click(object sender, RoutedEventArgs e)
+        {
+            int idx = ChaptersList.SelectedIndex;
+            bool atEnd = idx >= 0 && idx == ChaptersList.Items.Count - 1;
+            // At the end of a URL-imported chapter → fetch the site's next page and append it.
+            if (atEnd && ChaptersList.SelectedItem is ChapterItem cur && !string.IsNullOrEmpty(cur.NextUrl))
+            {
+                await ImportUrlAsChapterAsync(cur.NextUrl);
+                return;
+            }
+            StepChapter(1);
+        }
+
+        private void StepChapter(int delta)
+        {
+            if (ChaptersList.Items.Count == 0) return;
+            int idx = ChaptersList.SelectedIndex < 0 ? (delta > 0 ? -1 : 0) : ChaptersList.SelectedIndex;
+            int target = Math.Clamp(idx + delta, 0, ChaptersList.Items.Count - 1);
+            if (target == ChaptersList.SelectedIndex) return;
+            ChaptersList.SelectedIndex = target;
+            ChaptersList.ScrollIntoView(ChaptersList.SelectedItem);
+        }
+
+        private void BtnTidy_Click(object sender, RoutedEventArgs e)
+        {
+            string before = TxtPreview.Text;
+            if (string.IsNullOrWhiteSpace(before)) { TxtStatus.Text = "Nothing to tidy"; return; }
+
+            SaveStateForUndo();
+            string after = TextCleaner.TidyContent(before);
+            // Setting the text fires TextChanged → persists into the selected chapter's Content.
+            TxtPreview.Text = after;
+            TxtStatus.Text = before == after
+                ? "Already tidy (no changes needed)"
+                : $"Tidied: {before.Length} → {after.Length} chars";
+        }
+
+        private void BtnTidyAll_Click(object sender, RoutedEventArgs e)
+        {
+            var targets = _chapters.Where(c => c.IsSelected).ToList();
+            if (targets.Count == 0)
+            {
+                MessageBox.Show("No checked chapters to tidy.", "Tidy All", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (MessageBox.Show($"Tidy {targets.Count} checked chapter(s)? This rewrites their text.",
+                "Tidy All", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+            SaveStateForUndo();
+            foreach (var c in targets) c.Content = TextCleaner.TidyContent(c.Content);
+
+            // Refresh the editor if the current chapter was tidied.
+            if (ChaptersList.SelectedItem is ChapterItem cur && cur.IsSelected)
+            {
+                _isUpdatingText = true;
+                TxtPreview.Text = cur.Content;
+                _isUpdatingText = false;
+            }
+            TxtStatus.Text = $"Tidied {targets.Count} chapter(s)";
+            ScheduleDurationRefresh();
+        }
+
         private void CmbChapterVoice_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isUpdatingText) return;
@@ -241,7 +310,7 @@ namespace TTSApp
 
         private void ResetCloneButton()
         {
-            BtnCloneVoice.Content = "🎤";
+            // Mic icon stays; inactive state shown by the default button background.
             BtnCloneVoice.Background = (System.Windows.Media.Brush)FindResource("BrushButtonBg");
             CmbVoice.IsEnabled = true;
         }
@@ -265,7 +334,7 @@ namespace TTSApp
             if (dlg.ShowDialog() != true) return;
 
             AppSettings.CloneReferencePath = dlg.FileName;
-            BtnCloneVoice.Content = "✓";
+            // Active state shown by accent background.
             BtnCloneVoice.Background = (System.Windows.Media.Brush)FindResource("BrushAccentPurple");
             CmbVoice.IsEnabled = false; // cloned voice overrides the dropdown
             TxtStatus.Text = $"Voice cloning: {System.IO.Path.GetFileName(dlg.FileName)}";
@@ -274,7 +343,7 @@ namespace TTSApp
         private async void CmbModel_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (CmbModel.SelectedItem is not ComboBoxItem item) return;
-            string newModel = item.Tag?.ToString() ?? "kokoro-en-v0_19";
+            string newModel = item.Tag?.ToString() ?? "kokoro-multi-lang-v1_0";
             if (newModel == AppSettings.SelectedModel) return;
 
             AppSettings.SelectedModel = newModel;
@@ -306,12 +375,12 @@ namespace TTSApp
                         "GPU Engine Setup", MessageBoxButton.OKCancel, MessageBoxImage.Information);
                     if (go != MessageBoxResult.OK)
                     {
-                        AppSettings.SelectedModel = "kokoro-en-v0_19";
+                        AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                         AppSettings.Save();
                         _ttsEngine.Dispose();
                         _ttsEngine = new TtsEngine();
                         InitializeTts("cpu");
-                        SelectModelInDropdown("kokoro-en-v0_19");
+                        SelectModelInDropdown("kokoro-multi-lang-v1_0");
                         return;
                     }
                 }
@@ -345,12 +414,12 @@ namespace TTSApp
                         $"Could not start the GPU ({label}) engine:\n{ex.Message}\n\nFalling back to Kokoro English.",
                         "GPU Engine Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-                    AppSettings.SelectedModel = "kokoro-en-v0_19";
+                    AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                     AppSettings.Save();
                     _ttsEngine.Dispose();
                     _ttsEngine = new TtsEngine();
                     InitializeTts("cpu");
-                    SelectModelInDropdown("kokoro-en-v0_19");
+                    SelectModelInDropdown("kokoro-multi-lang-v1_0");
                 }
                 finally
                 {
@@ -509,6 +578,10 @@ namespace TTSApp
 
         #region Edit Menu
         private void CommandBinding_Find_Executed(object sender, ExecutedRoutedEventArgs e) => MenuFind_Click(sender, e);
+        private void CommandBinding_Replace_Executed(object sender, ExecutedRoutedEventArgs e) => MenuReplace_Click(sender, e);
+        private void CommandBinding_ReplaceAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuReplaceAll_Click(sender, e);
+        private void CommandBinding_UndoAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuUndoAll_Click(sender, e);
+        private void CommandBinding_RedoAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuRedoAll_Click(sender, e);
 
         private void MenuCut_Click(object sender, RoutedEventArgs e) => TxtPreview.Cut();
         private void MenuCopy_Click(object sender, RoutedEventArgs e) => TxtPreview.Copy();
@@ -528,6 +601,45 @@ namespace TTSApp
             {
                 MessageBox.Show("Text not found.", "Find", MessageBoxButton.OK, MessageBoxImage.Information);
             }
+        }
+
+        private void MenuReplace_Click(object sender, RoutedEventArgs e) => DoReplace(all: false);
+        private void MenuReplaceAll_Click(object sender, RoutedEventArgs e) => DoReplace(all: true);
+
+        private void DoReplace(bool all)
+        {
+            var find = Microsoft.VisualBasic.Interaction.InputBox("Find text:", all ? "Replace All" : "Replace", "");
+            if (string.IsNullOrEmpty(find)) return;
+            var repl = Microsoft.VisualBasic.Interaction.InputBox($"Replace \"{find}\" with:", all ? "Replace All" : "Replace", "");
+
+            string text = TxtPreview.Text;
+            if (all)
+            {
+                // Case-insensitive replace-all in the current chapter content box.
+                int count = 0;
+                string result = Regex.Replace(text, Regex.Escape(find), m => { count++; return repl; }, RegexOptions.IgnoreCase);
+                if (count == 0) { MessageBox.Show("Text not found.", "Replace All", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+                TxtPreview.Text = result;
+                TxtStatus.Text = $"Replaced {count} occurrence(s)";
+            }
+            else
+            {
+                int idx = text.IndexOf(find, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) { MessageBox.Show("Text not found.", "Replace", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+                TxtPreview.Text = text.Remove(idx, find.Length).Insert(idx, repl);
+                TxtPreview.Focus();
+                TxtPreview.Select(idx, repl.Length);
+            }
+        }
+
+        private void MenuUndoAll_Click(object sender, RoutedEventArgs e)
+        {
+            while (_undoStack.Count > 0) MenuUndo_Click(sender, e);
+        }
+
+        private void MenuRedoAll_Click(object sender, RoutedEventArgs e)
+        {
+            while (_redoStack.Count > 0) MenuRedo_Click(sender, e);
         }
         #endregion
 
@@ -1137,7 +1249,7 @@ namespace TTSApp
             SetBusy(true, "Converting...");
             BtnBrowse.IsEnabled = false;
             BtnConvert.IsEnabled = true;        // stays clickable as a Cancel button
-            BtnConvert.Content = "✖  Cancel";
+            LblConvert.Text = "Cancel";
             ProgressBar.Maximum = selected.Count;
             ProgressBar.Value = 0;
             foreach (var ch in selected) ch.Status = ConvertState.Queued;
@@ -1321,7 +1433,7 @@ namespace TTSApp
             {
                 _convertCts?.Dispose();
                 _convertCts = null;
-                BtnConvert.Content = "⚡  Convert";
+                LblConvert.Text = "Convert";
                 SetBusy(false, "Ready");
                 BtnBrowse.IsEnabled = true;
                 BtnConvert.IsEnabled = true;
@@ -1724,7 +1836,11 @@ namespace TTSApp
         {
             var input = Microsoft.VisualBasic.Interaction.InputBox("Enter URL to a web novel chapter:", "Import from URL", "");
             if (string.IsNullOrWhiteSpace(input)) return;
+            await ImportUrlAsChapterAsync(input);
+        }
 
+        private async System.Threading.Tasks.Task<bool> ImportUrlAsChapterAsync(string input)
+        {
             SetBusy(true, "Fetching...");
             try
             {
@@ -1732,6 +1848,9 @@ namespace TTSApp
                 client.Timeout = TimeSpan.FromSeconds(30);
                 client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
                 var html = await client.GetStringAsync(input);
+
+                // Find the "next chapter" link from the raw HTML before we strip navigation.
+                string? nextUrl = ExtractNextLink(html, input);
 
                 // Strip script/style/nav tags
                 html = Regex.Replace(html, @"<script[^>]*>.*?</script>", "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
@@ -1776,24 +1895,53 @@ namespace TTSApp
                 }
 
                 SaveStateForUndo();
-                _chapters.Clear();
-                _chapters.Add(new ChapterItem { Title = title, Content = content, Index = 0, IsSelected = true });
+                // Append as a new chapter (keep any existing book).
+                var newChapter = new ChapterItem
+                {
+                    Title = title, Content = content, Index = _chapters.Count, IsSelected = true,
+                    SourceUrl = input, NextUrl = nextUrl
+                };
+                _chapters.Add(newChapter);
                 ChaptersList.ItemsSource = null;
                 ChaptersList.ItemsSource = _chapters;
-                ChaptersList.SelectedIndex = 0;
-                TxtChapterCount.Text = "1 chapter";
-                TxtFilePath.Text = input;
-                TxtStatus.Text = "Imported from URL";
+                ChaptersList.SelectedItem = newChapter;
+                ChaptersList.ScrollIntoView(newChapter);
+                TxtChapterCount.Text = $"{_chapters.Count} chapter(s)";
+                TxtStatus.Text = $"Imported from URL: {title}";
                 ScheduleDurationRefresh();
+                return true;
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to fetch URL:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
             finally
             {
                 SetBusy(false, "Ready");
             }
+        }
+
+        // Find a "next chapter" link: prefer rel="next", else an anchor whose text contains "next".
+        private static string? ExtractNextLink(string html, string baseUrl)
+        {
+            string? href = null;
+            var rel = Regex.Match(html, @"<a\b[^>]*\brel=[""']next[""'][^>]*\bhref=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
+            if (!rel.Success)
+                rel = Regex.Match(html, @"<a\b[^>]*\bhref=[""']([^""']+)[""'][^>]*\brel=[""']next[""']", RegexOptions.IgnoreCase);
+            if (rel.Success) href = rel.Groups[1].Value;
+
+            if (href == null)
+            {
+                // Anchor whose visible text starts with / contains "next" (e.g. "Next Chapter", "Next ›").
+                var m = Regex.Match(html, @"<a\b[^>]*\bhref=[""']([^""']+)[""'][^>]*>\s*(?:<[^>]+>\s*)*[^<]*next[^<]*<",
+                    RegexOptions.IgnoreCase);
+                if (m.Success) href = m.Groups[1].Value;
+            }
+            if (string.IsNullOrWhiteSpace(href) || href.StartsWith("#") || href.StartsWith("javascript:")) return null;
+
+            try { return new Uri(new Uri(baseUrl), href).ToString(); }
+            catch { return null; }
         }
         #endregion
 

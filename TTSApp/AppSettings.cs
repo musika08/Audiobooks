@@ -16,7 +16,7 @@ namespace TTSApp
         public static int ForwardSeconds { get; set; } = 10;
         public static bool AnnounceChapterTitle { get; set; } = true;
         public static string Theme { get; set; } = "Dark";
-        public static string SelectedModel { get; set; } = "kokoro-en-v0_19";
+        public static string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
         public static bool EnableDialogMode { get; set; } = false;
         public static int DialogVoiceId { get; set; } = 1;
         public static int PauseAfterCommaMs { get; set; } = 50;
@@ -59,7 +59,7 @@ namespace TTSApp
                         ForwardSeconds = data.ForwardSeconds;
                         AnnounceChapterTitle = data.AnnounceChapterTitle;
                         Theme = data.Theme ?? "Dark";
-                        SelectedModel = data.SelectedModel ?? "kokoro-en-v0_19";
+                        SelectedModel = data.SelectedModel ?? "kokoro-multi-lang-v1_0";
                         EnableDialogMode = data.EnableDialogMode;
                         DialogVoiceId = data.DialogVoiceId;
                         PauseAfterCommaMs = data.PauseAfterCommaMs;
@@ -149,7 +149,7 @@ namespace TTSApp
             public int ForwardSeconds { get; set; } = 10;
             public bool AnnounceChapterTitle { get; set; } = true;
             public string Theme { get; set; } = "Dark";
-            public string SelectedModel { get; set; } = "kokoro-en-v0_19";
+            public string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
             public bool EnableDialogMode { get; set; } = false;
             public int DialogVoiceId { get; set; } = 1;
             public int PauseAfterCommaMs { get; set; } = 50;

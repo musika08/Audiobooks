@@ -29,6 +29,10 @@ namespace TTSApp
         // Per-chapter voice: -1 = use the global voice; otherwise a speaker index. Runtime-only.
         public int VoiceOverride { get; set; } = -1;
 
+        // For URL-imported chapters: the page it came from, and the discovered "next chapter" link.
+        public string? SourceUrl { get; set; }
+        public string? NextUrl { get; set; }
+
         public bool IsSelected
         {
             get => _isSelected;

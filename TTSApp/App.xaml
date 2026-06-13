@@ -163,9 +163,74 @@
         </Style>
 
         <Style TargetType="MenuItem">
-            <Setter Property="Background" Value="{DynamicResource BrushMenuBg}"/>
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource BrushTextPrimary}"/>
             <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderThickness="0" SnapsToDevicePixels="True" CornerRadius="3">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0" ContentSource="Header" RecognizesAccessKey="True"
+                                                  Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}"
+                                           Foreground="{DynamicResource BrushTextMuted}" Margin="20,0,8,0"
+                                           VerticalAlignment="Center"/>
+                                <Path x:Name="Arrow" Grid.Column="2" Visibility="Collapsed"
+                                      Data="M 0 0 L 4 4 L 0 8 Z" Fill="{TemplateBinding Foreground}"
+                                      VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                                       IsOpen="{TemplateBinding IsSubmenuOpen}"
+                                       Placement="Bottom" PopupAnimation="Fade">
+                                    <Border Background="{DynamicResource BrushDropdownBg}"
+                                            BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                                            CornerRadius="4" Padding="3" SnapsToDevicePixels="True">
+                                        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden">
+                                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <!-- Submenu items (in the popup) place their child popup to the side. -->
+                            <Trigger Property="Role" Value="SubmenuHeader">
+                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                            </Trigger>
+                            <Trigger Property="Role" Value="SubmenuItem">
+                                <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                            </Trigger>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushAccentBlue}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource BrushTextMuted}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Separator">
+            <Setter Property="Background" Value="{DynamicResource BrushBorder}"/>
+            <Setter Property="Margin" Value="6,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Background="{DynamicResource BrushBorder}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <!-- Slider Style -->
@@ -229,5 +294,34 @@
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Height" Value="6"/>
         </Style>
+
+        <!-- Lucide icons (rendered as WPF vector paths; no external font needed) -->
+        <Style x:Key="LucideIcon" TargetType="Path">
+            <Setter Property="Stroke" Value="{DynamicResource BrushTextPrimary}"/>
+            <Setter Property="StrokeThickness" Value="2"/>
+            <Setter Property="StrokeStartLineCap" Value="Round"/>
+            <Setter Property="StrokeEndLineCap" Value="Round"/>
+            <Setter Property="StrokeLineJoin" Value="Round"/>
+            <Setter Property="Fill" Value="{x:Null}"/>
+        </Style>
+
+        <Geometry x:Key="GeoChevronLeft">M15,18 L9,12 L15,6</Geometry>
+        <Geometry x:Key="GeoChevronRight">M9,18 L15,12 L9,6</Geometry>
+        <Geometry x:Key="GeoTriLeft">M15,5 L8,12 L15,19 Z</Geometry>
+        <Geometry x:Key="GeoTriRight">M9,5 L16,12 L9,19 Z</Geometry>
+        <Geometry x:Key="GeoTriUp">M5,15 L12,8 L19,15 Z</Geometry>
+        <Geometry x:Key="GeoTriDown">M5,9 L12,16 L19,9 Z</Geometry>
+        <Geometry x:Key="GeoChevronUp">M18,15 L12,9 L6,15</Geometry>
+        <Geometry x:Key="GeoChevronDown">M6,9 L12,15 L18,9</Geometry>
+        <Geometry x:Key="GeoPlus">M5,12 L19,12 M12,5 L12,19</Geometry>
+        <Geometry x:Key="GeoCheck">M20,6 L9,17 L4,12</Geometry>
+        <Geometry x:Key="GeoX">M18,6 L6,18 M6,6 L18,18</Geometry>
+        <Geometry x:Key="GeoTrash">M3,6 L21,6 M19,6 L19,20 A2,2 0 0 1 17,22 L7,22 A2,2 0 0 1 5,20 L5,6 M8,6 L8,4 A2,2 0 0 1 10,2 L14,2 A2,2 0 0 1 16,4 L16,6 M10,11 L10,17 M14,11 L14,17</Geometry>
+        <Geometry x:Key="GeoAlignLeft">M15,12 L3,12 M17,18 L3,18 M21,6 L3,6</Geometry>
+        <Geometry x:Key="GeoListChecks">M3,17 L5,19 L9,15 M3,7 L5,9 L9,5 M13,6 L21,6 M13,12 L21,12 M13,18 L21,18</Geometry>
+        <Geometry x:Key="GeoMic">M12,19 L12,22 M8,22 L16,22 M19,10 L19,12 A7,7 0 0 1 5,12 L5,10 M12,2 A3,3 0 0 0 9,5 L9,12 A3,3 0 0 0 15,12 L15,5 A3,3 0 0 0 12,2 Z</Geometry>
+        <Geometry x:Key="GeoFolderOpen">M6,14 L7.5,11.1 A2,2 0 0 1 9.24,10 L20,10 A2,2 0 0 1 21.94,12.5 L20.4,18.5 A2,2 0 0 1 18.45,20 L4,20 A2,2 0 0 1 2,18 L2,5 A2,2 0 0 1 4,3 L7.9,3 A2,2 0 0 1 9.59,3.9 L10.4,5.1 A2,2 0 0 0 12.07,6 L18,6 A2,2 0 0 1 20,8 L20,10</Geometry>
+        <Geometry x:Key="GeoPlay">M6,3 L20,12 L6,21 Z</Geometry>
+        <Geometry x:Key="GeoZap">M4,14 A1,1 0 0 1 3.22,12.37 L13.12,2.17 A0.5,0.5 0 0 1 13.98,2.63 L12.06,8.65 A1,1 0 0 0 13,10 L20,10 A1,1 0 0 1 20.78,11.63 L10.88,21.83 A0.5,0.5 0 0 1 10.02,21.37 L11.94,15.35 A1,1 0 0 0 11,14 Z</Geometry>
     </Application.Resources>
 </Application>

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -6,6 +7,46 @@ namespace TTSApp
 {
     public static class TextCleaner
     {
+        /// <summary>
+        /// Tidies chapter text: removes stray spaces, reflows mid-sentence line breaks,
+        /// and separates paragraphs (blank line) where a sentence ends. Safe to run repeatedly.
+        /// </summary>
+        public static string TidyContent(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return text ?? "";
+
+            const string Para = "@@PARA_BREAK@@"; // transient paragraph marker
+            text = text.Replace("\r\n", "\n").Replace("\r", "\n");
+            text = text.Replace(((char)0x00A0).ToString(), " "); // non-breaking spaces -> normal spaces
+
+            // Decide how single line breaks are used in this text.
+            bool hasBlankLineParagraphs = Regex.IsMatch(text, @"\n[ \t]*\n");
+
+            if (hasBlankLineParagraphs)
+            {
+                // Blank lines already separate paragraphs → treat single line breaks as wraps and
+                // reflow them into flowing, book-like paragraphs.
+                text = Regex.Replace(text, @"\n[ \t]*\n+", Para); // protect paragraph breaks
+                text = text.Replace("\n", " ");                   // join wrapped lines
+                text = text.Replace(Para, "\n\n");                // restore paragraph breaks
+            }
+            else
+            {
+                // No blank lines: each line break IS a paragraph break (don't merge distinct lines).
+                text = text.Replace("\n", "\n\n");
+            }
+
+            // Whitespace cleanup.
+            text = Regex.Replace(text, @"[ \t]+", " ");
+            text = Regex.Replace(text, @" +([,.!?;:])", "$1"); // no space before punctuation
+            text = Regex.Replace(text, @"\n{3,}", "\n\n");
+
+            var paragraphs = text.Split(new[] { "\n\n" }, StringSplitOptions.None)
+                                 .Select(p => p.Trim())
+                                 .Where(p => p.Length > 0);
+            return string.Join("\n\n", paragraphs);
+        }
+
         /// <summary>
         /// Cleans up PDF-extracted text by removing repeated headers/footers,
         /// page numbers, and fixing hyphenated words broken across lines.
@@ -85,9 +126,6 @@ namespace TTSApp
                 string right = m.Groups[2].Value;
                 string combined = left + right;
 
-                // Safety: don't de-hyphenate if result looks like two distinct words
-                // e.g., "well-known" broken across lines is rare; most are word splits
-                // Simple heuristic: accept if combined length is reasonable
                 if (combined.Length >= 4 && combined.All(char.IsLetter))
                     return combined;
 
