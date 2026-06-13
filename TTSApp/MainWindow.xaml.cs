@@ -2000,10 +2000,20 @@ namespace TTSApp
                     RegexOptions.IgnoreCase);
                 if (m.Success) href = m.Groups[1].Value;
             }
-            if (string.IsNullOrWhiteSpace(href) || href.StartsWith("#") || href.StartsWith("javascript:")) return null;
 
-            try { return new Uri(new Uri(baseUrl), href).ToString(); }
-            catch { return null; }
+            if (!string.IsNullOrWhiteSpace(href) && !href.StartsWith("#") && !href.StartsWith("javascript:"))
+            {
+                try { return new Uri(new Uri(baseUrl), href).ToString(); }
+                catch { /* fall through to URL-increment */ }
+            }
+
+            // Fallback: many novel sites put the chapter number at the end of the URL
+            // (…/series/<slug>/1 → …/2). Increment the last number in the path.
+            var num = Regex.Match(baseUrl, @"^(.*?/)(\d+)(/?)([?#].*)?$");
+            if (num.Success && int.TryParse(num.Groups[2].Value, out int n))
+                return $"{num.Groups[1].Value}{n + 1}{num.Groups[3].Value}{num.Groups[4].Value}";
+
+            return null;
         }
         #endregion
 
