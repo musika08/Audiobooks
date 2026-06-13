@@ -156,6 +156,14 @@ namespace TTSApp
             finally { BtnCheckUpdate.Content = "Check for Updates"; BtnCheckUpdate.IsEnabled = true; }
         }
 
+        private async void BtnSyncSidecar_Click(object sender, RoutedEventArgs e)
+        {
+            BtnSyncSidecar.IsEnabled = false;
+            BtnSyncSidecar.Content = "Syncing...";
+            try { await Updater.SyncSidecarFromGitHubAsync(); }
+            finally { BtnSyncSidecar.Content = "Sync GPU Sidecar Files"; BtnSyncSidecar.IsEnabled = true; }
+        }
+
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
             DialogResult = false;

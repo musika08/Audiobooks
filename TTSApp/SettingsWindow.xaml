@@ -247,8 +247,12 @@
                             <TextBlock x:Name="LblVersion" Text="" VerticalAlignment="Center" Margin="12,0,0,0"
                                        Foreground="{DynamicResource BrushTextMuted}" FontSize="12"/>
                         </StackPanel>
-                        <TextBlock Text="Pulls the latest release from GitHub and restarts the app."
-                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,0"/>
+                        <TextBlock Text="Pulls the latest app release from GitHub and restarts the app."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,10"/>
+                        <Button x:Name="BtnSyncSidecar" Content="Sync GPU Sidecar Files" Width="180" Height="30"
+                                HorizontalAlignment="Left" Click="BtnSyncSidecar_Click"/>
+                        <TextBlock Text="Live-updates only the Python GPU scripts (server + requirements) from GitHub — no app restart."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>
 

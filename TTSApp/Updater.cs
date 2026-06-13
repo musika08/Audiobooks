@@ -12,7 +12,7 @@ namespace TTSApp
     // Pulls the latest release from GitHub and updates the app in place (via a relaunch script).
     public static class Updater
     {
-        public const string AppVersion = "1.0.1";
+        public const string AppVersion = "1.0.2";
         private const string LatestReleaseApi = "https://api.github.com/repos/musika08/Audiobooks/releases/latest";
 
         public static async Task CheckForUpdatesAsync()
@@ -124,6 +124,56 @@ rmdir /s /q ""{work}""
 
             // Close the app so the script can overwrite its files.
             Application.Current.Shutdown();
+        }
+
+        private const string SidecarContentsApi =
+            "https://api.github.com/repos/musika08/Audiobooks/contents/TTSApp/python?ref=main";
+
+        // Live-pull the Python sidecar scripts (tts_server.py, requirements-*.txt, README) from main.
+        // No release needed — these are interpreted, not compiled. Busts deps markers so changed
+        // requirements reinstall on the next engine launch.
+        public static async Task SyncSidecarFromGitHubAsync()
+        {
+            string pythonDir = Path.Combine(AppContext.BaseDirectory, "python");
+            try
+            {
+                using var http = new HttpClient();
+                http.DefaultRequestHeaders.UserAgent.ParseAdd("TTSApp-Updater");
+                http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+
+                var json = await http.GetStringAsync(SidecarContentsApi);
+                using var doc = JsonDocument.Parse(json);
+
+                Directory.CreateDirectory(pythonDir);
+                int count = 0;
+                foreach (var item in doc.RootElement.EnumerateArray())
+                {
+                    if (item.GetProperty("type").GetString() != "file") continue;
+                    string name = item.GetProperty("name").GetString() ?? "";
+                    if (!(name.EndsWith(".py") || name.EndsWith(".txt") || name.EndsWith(".md"))) continue;
+                    string? dl = item.GetProperty("download_url").GetString();
+                    if (string.IsNullOrEmpty(dl)) continue;
+
+                    var bytes = await http.GetByteArrayAsync(dl);
+                    await File.WriteAllBytesAsync(Path.Combine(pythonDir, name), bytes);
+                    count++;
+                }
+
+                // Force engines to re-check dependencies (picks up changed requirements).
+                foreach (var dir in Directory.GetDirectories(pythonDir, ".venv-*"))
+                {
+                    var marker = Path.Combine(dir, ".deps_ok");
+                    try { if (File.Exists(marker)) File.Delete(marker); } catch { }
+                }
+
+                MessageBox.Show(
+                    $"Synced {count} sidecar file(s) from GitHub.\n\nGPU engines will re-check their Python dependencies the next time you select one.",
+                    "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Sidecar sync failed:\n{ex.Message}", "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         // True if remote tag (e.g. "v1.2.0") is a higher version than current.
