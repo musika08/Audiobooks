@@ -292,7 +292,7 @@ namespace TTSApp
 
         // GPU-only engines run through the Python sidecar; everything else is in-process Kokoro.
         private static bool IsSidecarModel(string modelName) =>
-            modelName is "xtts-v2" or "chatterbox";
+            modelName is "xtts-v2" or "chatterbox" or "vibevoice";
 
         private static ITtsEngine CreateEngine(string modelName) =>
             IsSidecarModel(modelName) ? new PythonSidecarEngine(modelName) : new TtsEngine();

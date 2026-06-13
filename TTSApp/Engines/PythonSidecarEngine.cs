@@ -54,7 +54,13 @@ namespace TTSApp
         private string VenvDir => VenvDirFor(_modelName);
         private string VenvPython => VenvPythonFor(_modelName);
         private string DepsMarker => DepsMarkerFor(_modelName);
-        private string EngineKey => _modelName switch { "chatterbox" => "chatterbox", "fish-opus" => "fish", _ => "xtts" };
+        private string EngineKey => _modelName switch
+        {
+            "chatterbox" => "chatterbox",
+            "fish-opus" => "fish",
+            "vibevoice" => "vibevoice",
+            _ => "xtts"
+        };
         private string RequirementsFile => Path.Combine(ScriptDir, $"requirements-{EngineKey}.txt");
 
         private static string RuntimeDir => Path.Combine(ScriptDir, "runtime");

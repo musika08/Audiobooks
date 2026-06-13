@@ -120,11 +120,80 @@ class FishEngine:
         return np.asarray(wav).squeeze()
 
 
+class VibeVoiceEngine:
+    """Microsoft VibeVoice (GPU, experimental). Long-form, expressive cloning.
+
+    First cut: single-speaker — needs a reference clip via the clone (mic) button.
+    Uses 'sdpa' attention to avoid the flash-attn build requirement on Windows.
+    """
+
+    name = "vibevoice"
+
+    def __init__(self):
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        model_path = "microsoft/VibeVoice-1.5B"
+        try:
+            from vibevoice.modular.modeling_vibevoice_inference import (
+                VibeVoiceForConditionalGenerationInference,
+            )
+            from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
+
+            self.processor = VibeVoiceProcessor.from_pretrained(model_path)
+            self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
+                model_path,
+                torch_dtype=torch.bfloat16,
+                device_map=self.device,
+                attn_implementation="sdpa",  # avoid flash-attn on Windows
+            )
+            self.model.eval()
+            self.sr = 24000
+        except Exception as e:  # pragma: no cover
+            raise RuntimeError(
+                "VibeVoice failed to load. It may need a newer transformers or a different "
+                "install. See https://github.com/vibevoice-community/VibeVoice . "
+                f"Underlying error: {e}"
+            )
+
+    def speakers(self) -> list[str]:
+        return ["Default"]
+
+    def synth(self, req) -> np.ndarray:
+        ref = (
+            req.speaker_wav
+            if (req.speaker_wav and os.path.isfile(req.speaker_wav))
+            else None
+        )
+        if ref is None:
+            raise RuntimeError(
+                "VibeVoice needs a reference voice. Click the mic button and pick a clean "
+                "audio clip to clone."
+            )
+        script = f"Speaker 1: {req.text}"
+        inputs = self.processor(
+            text=[script],
+            voice_samples=[[ref]],
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
+        with torch.no_grad():
+            out = self.model.generate(
+                **inputs,
+                tokenizer=self.processor.tokenizer,
+                cfg_scale=1.3,
+            )
+        audio = out.speech_outputs[0]
+        if hasattr(audio, "detach"):
+            audio = audio.detach().cpu().float().numpy()
+        return np.asarray(audio).squeeze()
+
+
 def build_engine(model_id: str):
     if model_id == "chatterbox":
         return ChatterboxEngine()
     if model_id == "fish-opus":
         return FishEngine()
+    if model_id == "vibevoice":
+        return VibeVoiceEngine()
     return XttsEngine()  # default
 
 

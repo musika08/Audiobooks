@@ -133,6 +133,7 @@
                             <ComboBoxItem Tag="kokoro-multi-lang-v1_1">Kokoro Multi-Lang v1.1</ComboBoxItem>
                             <ComboBoxItem Tag="xtts-v2">XTTS v2 (GPU)</ComboBoxItem>
                             <ComboBoxItem Tag="chatterbox">Chatterbox (GPU)</ComboBoxItem>
+                            <ComboBoxItem Tag="vibevoice">VibeVoice (GPU, experimental)</ComboBoxItem>
                         </ComboBox>
                     </StackPanel>
 
