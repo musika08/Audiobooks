@@ -258,6 +258,10 @@
                         <Button x:Name="BtnSyncSidecar" Content="Sync GPU Sidecar Files" Width="180" Height="30"
                                 HorizontalAlignment="Left" Click="BtnSyncSidecar_Click"/>
                         <TextBlock Text="Live-updates only the Python GPU scripts (server + requirements) from GitHub — no app restart."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,10" TextWrapping="Wrap"/>
+                        <Button x:Name="BtnResetGpu" Content="Reset / Reinstall GPU Engines" Width="200" Height="30"
+                                HorizontalAlignment="Left" Click="BtnResetGpu_Click"/>
+                        <TextBlock Text="Deletes the GPU Python environments so they reinstall fresh (fixes broken installs). Model weights are kept."
                                    Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>

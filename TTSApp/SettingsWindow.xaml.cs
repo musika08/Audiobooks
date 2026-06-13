@@ -168,6 +168,20 @@ namespace TTSApp
             finally { BtnSyncSidecar.Content = "Sync GPU Sidecar Files"; BtnSyncSidecar.IsEnabled = true; }
         }
 
+        private void BtnResetGpu_Click(object sender, RoutedEventArgs e)
+        {
+            if (MessageBox.Show(
+                "Delete the GPU engine Python environments so they reinstall from scratch?\n\n" +
+                "Downloaded model weights are kept. The next time you pick a GPU engine it will reinstall (several minutes).",
+                "Reset GPU Engines", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+            var (venvs, runtime) = PythonSidecarEngine.ResetEnvironment();
+            MessageBox.Show(
+                $"Removed {venvs} engine environment(s){(runtime ? " + the bundled Python" : "")}.\n\n" +
+                "Pick a GPU engine to reinstall.",
+                "Reset GPU Engines", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
             DialogResult = false;

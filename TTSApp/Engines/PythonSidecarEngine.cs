@@ -217,6 +217,14 @@ namespace TTSApp
         {
             if (File.Exists(VenvPython) && File.Exists(DepsMarker)) return;
 
+            // A venv with no "done" marker = a previous install crashed mid-way. Wipe it so we
+            // rebuild from scratch (otherwise pip reuses the half-broken env and keeps failing).
+            if (Directory.Exists(VenvDir) && !File.Exists(DepsMarker))
+            {
+                Report("Previous install was incomplete — rebuilding the environment...");
+                try { Directory.Delete(VenvDir, true); } catch { }
+            }
+
             string requirements = RequirementsFile;
             if (!File.Exists(requirements))
                 throw new FileNotFoundException($"Requirements file not found: {requirements}");
@@ -525,6 +533,25 @@ namespace TTSApp
                 _runningModel = "";
                 try { if (File.Exists(PidFile)) File.Delete(PidFile); } catch { /* ignore */ }
             }
+        }
+
+        // Delete all GPU engine venvs + the bundled Python runtime so they rebuild cleanly.
+        // Keeps downloaded model weights (python\cache) so they don't re-download.
+        public static (int venvs, bool runtime) ResetEnvironment()
+        {
+            ShutdownServer();
+            int venvs = 0;
+            try
+            {
+                foreach (var dir in Directory.GetDirectories(ScriptDir, ".venv-*"))
+                {
+                    try { Directory.Delete(dir, true); venvs++; } catch { }
+                }
+            }
+            catch { }
+            bool runtime = false;
+            try { if (Directory.Exists(RuntimeDir)) { Directory.Delete(RuntimeDir, true); runtime = true; } } catch { }
+            return (venvs, runtime);
         }
 
         // Kill a sidecar left running by a previous app instance that crashed without cleanup.
