@@ -7,3 +7,5 @@ chatterbox-tts
 fastapi
 uvicorn
 numpy
+# Optional de-reverb/denoise for cloned output (used only when enabled in Settings).
+deepfilternet

@@ -318,7 +318,7 @@ namespace TTSApp
 
         private void BtnCloneVoice_Click(object sender, RoutedEventArgs e)
         {
-            // Toggle: clear an active clone, otherwise pick a reference file.
+            // Toggle: clear an active clone first.
             if (!string.IsNullOrEmpty(AppSettings.CloneReferencePath))
             {
                 AppSettings.CloneReferencePath = null;
@@ -327,6 +327,29 @@ namespace TTSApp
                 return;
             }
 
+            // Menu: pick a new clip (with option to save) or choose a saved voice.
+            var menu = new ContextMenu();
+            var pick = new MenuItem { Header = "🎤  Clone from audio file..." };
+            pick.Click += (_, _) => CloneFromFile();
+            menu.Items.Add(pick);
+
+            if (AppSettings.SavedVoices.Count > 0)
+            {
+                menu.Items.Add(new Separator());
+                foreach (var v in AppSettings.SavedVoices)
+                {
+                    var item = new MenuItem { Header = $"⭐  {v.Name}" };
+                    var captured = v;
+                    item.Click += (_, _) => UseSavedVoice(captured);
+                    menu.Items.Add(item);
+                }
+            }
+            menu.PlacementTarget = BtnCloneVoice;
+            menu.IsOpen = true;
+        }
+
+        private void CloneFromFile()
+        {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
                 Title = "Select reference audio for voice cloning",
@@ -334,11 +357,53 @@ namespace TTSApp
             };
             if (dlg.ShowDialog() != true) return;
 
-            AppSettings.CloneReferencePath = dlg.FileName;
-            // Active state shown by accent background.
+            ActivateClone(dlg.FileName);
+
+            // Offer to save it as a reusable named voice (copies the clip into the app).
+            if (MessageBox.Show("Save this voice for reuse?", "Saved Voices",
+                MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+            {
+                var name = Microsoft.VisualBasic.Interaction.InputBox("Name this voice:", "Save Voice",
+                    System.IO.Path.GetFileNameWithoutExtension(dlg.FileName));
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    try
+                    {
+                        System.IO.Directory.CreateDirectory(AppSettings.VoicesDir);
+                        string dest = System.IO.Path.Combine(AppSettings.VoicesDir,
+                            $"{Guid.NewGuid():N}{System.IO.Path.GetExtension(dlg.FileName)}");
+                        System.IO.File.Copy(dlg.FileName, dest, true);
+                        AppSettings.SavedVoices.RemoveAll(v => v.Name == name);
+                        AppSettings.SavedVoices.Add(new SavedVoice { Name = name.Trim(), FilePath = dest });
+                        AppSettings.Save();
+                        AppSettings.CloneReferencePath = dest; // use the saved copy
+                        TxtStatus.Text = $"Saved & using voice: {name}";
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Could not save voice:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
+        }
+
+        private void UseSavedVoice(SavedVoice v)
+        {
+            if (!System.IO.File.Exists(v.FilePath))
+            {
+                MessageBox.Show($"Saved voice file is missing:\n{v.FilePath}", "Saved Voices", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            ActivateClone(v.FilePath);
+            TxtStatus.Text = $"Voice cloning: {v.Name}";
+        }
+
+        private void ActivateClone(string path)
+        {
+            AppSettings.CloneReferencePath = path;
             BtnCloneVoice.Background = (System.Windows.Media.Brush)FindResource("BrushAccentPurple");
             CmbVoice.IsEnabled = false; // cloned voice overrides the dropdown
-            TxtStatus.Text = $"Voice cloning: {System.IO.Path.GetFileName(dlg.FileName)}";
+            TxtStatus.Text = $"Voice cloning: {System.IO.Path.GetFileName(path)}";
         }
 
         private async void CmbModel_SelectionChanged(object sender, SelectionChangedEventArgs e)

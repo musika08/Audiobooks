@@ -26,6 +26,8 @@ namespace TTSApp
         public static int PauseAfterEllipsisMs { get; set; } = 200;
         // Global multiplier applied to ALL pauses at once (100 = normal, 200 = double, 0 = none).
         public static int PauseScalePercent { get; set; } = 100;
+        // Level each spoken segment to equal loudness (keeps narrator and dialogue voices balanced).
+        public static bool LevelSegmentVolume { get; set; } = true;
         public static bool MergeIntoSingleFile { get; set; } = false;
         public static string? LastProjectPath { get; set; }
         public static string? LastOutputDir { get; set; }
@@ -43,6 +45,11 @@ namespace TTSApp
         public static int BackgroundVolumePercent { get; set; } = 15;
         // Reference audio for voice cloning (GPU sidecar engines only). Runtime-only, not persisted.
         public static string? CloneReferencePath { get; set; }
+        // Run a de-reverb/denoise pass on GPU-engine output (reduces room echo from reference clips).
+        public static bool DereverbCloned { get; set; } = false;
+        // Named, reusable cloned-voice reference clips (copied into the app's voices folder).
+        public static List<SavedVoice> SavedVoices { get; set; } = new();
+        public static string VoicesDir => Path.Combine(SettingsDir, "voices");
         public static Dictionary<string, string> PronunciationDict { get; set; } = new();
 
         public static void Load()
@@ -67,6 +74,9 @@ namespace TTSApp
                         PauseAfterParagraphMs = data.PauseAfterParagraphMs;
                         PauseAfterEllipsisMs = data.PauseAfterEllipsisMs;
                         PauseScalePercent = data.PauseScalePercent;
+                        LevelSegmentVolume = data.LevelSegmentVolume;
+                        DereverbCloned = data.DereverbCloned;
+                        SavedVoices = data.SavedVoices ?? new();
                         MergeIntoSingleFile = data.MergeIntoSingleFile;
                         LastProjectPath = data.LastProjectPath;
                         LastOutputDir = data.LastOutputDir;
@@ -111,6 +121,9 @@ namespace TTSApp
                     PauseAfterParagraphMs = PauseAfterParagraphMs,
                     PauseAfterEllipsisMs = PauseAfterEllipsisMs,
                     PauseScalePercent = PauseScalePercent,
+                    LevelSegmentVolume = LevelSegmentVolume,
+                    DereverbCloned = DereverbCloned,
+                    SavedVoices = SavedVoices,
                     MergeIntoSingleFile = MergeIntoSingleFile,
                     LastProjectPath = LastProjectPath,
                     LastOutputDir = LastOutputDir,
@@ -157,6 +170,8 @@ namespace TTSApp
             public int PauseAfterParagraphMs { get; set; } = 500;
             public int PauseAfterEllipsisMs { get; set; } = 200;
             public int PauseScalePercent { get; set; } = 100;
+            public bool LevelSegmentVolume { get; set; } = true;
+            public bool DereverbCloned { get; set; } = false;
             public bool MergeIntoSingleFile { get; set; } = false;
             public string? LastProjectPath { get; set; }
             public string? LastOutputDir { get; set; }
@@ -170,6 +185,13 @@ namespace TTSApp
             public string? OutroAudioPath { get; set; }
             public string? BackgroundAudioPath { get; set; }
             public int BackgroundVolumePercent { get; set; } = 15;
+            public List<SavedVoice>? SavedVoices { get; set; }
         }
+    }
+
+    public class SavedVoice
+    {
+        public string Name { get; set; } = "";
+        public string FilePath { get; set; } = "";
     }
 }

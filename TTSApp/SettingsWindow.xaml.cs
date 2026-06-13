@@ -19,6 +19,8 @@ namespace TTSApp
             TxtForward.Text = AppSettings.ForwardSeconds.ToString();
             ChkAnnounce.IsChecked = AppSettings.AnnounceChapterTitle;
             ChkDialogMode.IsChecked = AppSettings.EnableDialogMode;
+            ChkLevelVolume.IsChecked = AppSettings.LevelSegmentVolume;
+            ChkDereverb.IsChecked = AppSettings.DereverbCloned;
             ChkMerge.IsChecked = AppSettings.MergeIntoSingleFile;
             CmbNormMode.SelectedIndex = AppSettings.NormalizationMode;
             TxtTargetLufs.Text = AppSettings.TargetLufs.ToString();
@@ -73,6 +75,8 @@ namespace TTSApp
 
             AppSettings.AnnounceChapterTitle = ChkAnnounce.IsChecked == true;
             AppSettings.EnableDialogMode = ChkDialogMode.IsChecked == true;
+            AppSettings.LevelSegmentVolume = ChkLevelVolume.IsChecked == true;
+            AppSettings.DereverbCloned = ChkDereverb.IsChecked == true;
             AppSettings.MergeIntoSingleFile = ChkMerge.IsChecked == true;
             AppSettings.NormalizationMode = CmbNormMode.SelectedIndex < 0 ? 0 : CmbNormMode.SelectedIndex;
             AppSettings.NormalizeAudio = AppSettings.NormalizationMode != 0;

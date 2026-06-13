@@ -15,6 +15,7 @@ namespace TTSApp
         private bool _initialized = false;
         private readonly string _modelPath;
         private readonly string _modelName;
+        private bool _levelSegments;
 
         public bool IsInitialized => _initialized;
         public string CurrentProvider { get; private set; } = "cpu";
@@ -158,6 +159,9 @@ namespace TTSApp
 
             bool dialogMode = AppSettings.EnableDialogMode;
             int dialogVoiceId = AppSettings.DialogVoiceId;
+            // Level each chunk to equal loudness only when mixing voices (dialog mode), so narrator
+            // and dialogue match without flattening the dynamics of a single-voice chapter.
+            _levelSegments = dialogMode && AppSettings.LevelSegmentVolume;
 
             // One global knob scales every pause type at once (100 = normal).
             double pauseScale = AppSettings.PauseScalePercent / 100.0;
@@ -279,6 +283,11 @@ namespace TTSApp
             var tempFile = Path.Combine(Path.GetTempPath(), $"tts_chunk_{Guid.NewGuid()}.wav");
             audio.SaveToWaveFile(tempFile);
             audio.Dispose();
+
+            // Level each chunk to a common loudness so different voices match (dialog mode).
+            if (_levelSegments)
+                AudioNormalizer.NormalizeLoudness(tempFile, targetRmsDbfs: -20f);
+
             tempFiles.Add(tempFile);
         }
 

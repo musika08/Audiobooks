@@ -116,7 +116,8 @@ namespace TTSApp
                 speaker,
                 speaker_wav = speakerWav,
                 speed,
-                language = "en"
+                language = "en",
+                denoise = AppSettings.DereverbCloned
             };
             var json = JsonSerializer.Serialize(payload);
 

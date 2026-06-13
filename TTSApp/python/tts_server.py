@@ -137,6 +137,38 @@ class SynthRequest(BaseModel):
     speaker_wav: str = ""  # reference audio path for cloning (overrides speaker)
     speed: float = 1.0
     language: str = "en"
+    denoise: bool = False  # run a de-reverb/denoise pass on the output (DeepFilterNet)
+
+
+# Lazy DeepFilterNet state (loaded only when denoise is first requested).
+_df = {"model": None, "state": None, "sr": 48000}
+
+
+def _dereverb(samples: np.ndarray, sr: int) -> np.ndarray:
+    """Reduce room reverb/noise via DeepFilterNet. Returns audio at the original sample rate."""
+    try:
+        import torch
+        import torchaudio
+
+        if _df["model"] is None:
+            from df.enhance import init_df
+
+            model, state, _ = init_df()
+            _df["model"], _df["state"], _df["sr"] = model, state, state.sr()
+
+        from df.enhance import enhance
+
+        wav = torch.from_numpy(np.asarray(samples, dtype=np.float32)).unsqueeze(0)
+        target = _df["sr"]
+        if sr != target:
+            wav = torchaudio.functional.resample(wav, sr, target)
+        out = enhance(_df["model"], _df["state"], wav)
+        if target != sr:
+            out = torchaudio.functional.resample(out, target, sr)
+        return out.squeeze().cpu().numpy()
+    except Exception as e:  # pragma: no cover
+        print(f"De-reverb skipped (DeepFilterNet unavailable): {e}", flush=True)
+        return samples
 
 
 def to_wav_bytes(samples: np.ndarray, sr: int) -> bytes:
@@ -169,6 +201,8 @@ def speakers():
 @app.post("/synthesize")
 def synthesize(req: SynthRequest):
     samples = _engine.synth(req)
+    if req.denoise:
+        samples = _dereverb(samples, _engine.sr)
     data = to_wav_bytes(samples, _engine.sr)
     return Response(content=data, media_type="audio/wav")
 
