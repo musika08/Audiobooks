@@ -1,0 +1,264 @@
+<Window x:Class="TTSApp.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings" Height="700" Width="540"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BrushWindowBg}"
+        FontFamily="Segoe UI"
+        ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="⚙️ Settings" FontSize="22" FontWeight="Bold"
+                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,16"/>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+            <StackPanel>
+
+                <!-- Playback -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Playback" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="Rewind seconds" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtRewind" Text="10" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                <TextBlock Text="Forward seconds" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtForward" Text="10" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- TTS -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Text-to-Speech" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="ChkAnnounce" Content="Announce chapter number and title before reading each chapter"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" IsChecked="True" Margin="0,0,0,8"/>
+                        <CheckBox x:Name="ChkDialogMode" Content="Enable multi-voice dialog mode (alternates voice for quoted text)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="20,0,0,0">
+                            <TextBlock Text="Dialog voice:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <ComboBox x:Name="CmbDialogVoice" Width="140" Height="26" FontSize="12"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Pacing / Pauses -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Pacing &amp; Pauses" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+
+                        <!-- Global scale -->
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Pause scale" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,10,0"/>
+                            <Slider Grid.Column="1" x:Name="SliderPauseScale" Minimum="0" Maximum="300" Value="100"
+                                    VerticalAlignment="Center" TickFrequency="25" IsSnapToTickEnabled="True"
+                                    ValueChanged="SliderPauseScale_ValueChanged"/>
+                            <TextBlock Grid.Column="2" x:Name="LblPauseScale" Text="100%" Width="48" TextAlignment="Right"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource BrushTextPrimary}" FontSize="12" Margin="8,0,0,0"/>
+                        </Grid>
+                        <TextBlock Text="One knob for all pauses. 100% = normal, 200% = double, 0% = none."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,0,0,12"/>
+
+                        <!-- Base values -->
+                        <TextBlock Text="Base pause lengths (ms) — the scale above multiplies all of these"
+                                   Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,5,0">
+                                <TextBlock Text="Comma" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtCommaPause" Text="50" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="5,0,5,0">
+                                <TextBlock Text="Sentence" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtSentencePause" Text="100" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="5,0,5,0">
+                                <TextBlock Text="Ellipsis (…)" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtEllipsisPause" Text="200" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Margin="5,0,0,0">
+                                <TextBlock Text="Paragraph" Foreground="{DynamicResource BrushTextSecondary}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox x:Name="TxtParagraphPause" Text="500" Height="26" FontSize="13"
+                                         Background="{DynamicResource BrushPanelBgAlt}"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Text="Tip: ellipsis (…) gives a longer pause than a period. Comma pause &gt; 0 reads clause-by-clause."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Audio -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Audio Export" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="ChkMerge" Content="Merge chapters into a single file with chapter markers"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,10"/>
+
+                        <!-- Export preset -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Preset" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="CmbExportPreset" Width="180" Height="26" FontSize="12" SelectionChanged="CmbExportPreset_SelectionChanged">
+                                <ComboBoxItem>Custom</ComboBoxItem>
+                                <ComboBoxItem>ACX Audiobook (-20 LUFS)</ComboBoxItem>
+                                <ComboBoxItem>Podcast (-16 LUFS)</ComboBoxItem>
+                                <ComboBoxItem>Plain (no processing)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Normalization -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Loudness" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,10,0"/>
+                            <ComboBox Grid.Column="1" x:Name="CmbNormMode" Width="120" Height="26" FontSize="12">
+                                <ComboBoxItem>Off</ComboBoxItem>
+                                <ComboBoxItem>Peak</ComboBoxItem>
+                                <ComboBoxItem>RMS</ComboBoxItem>
+                                <ComboBoxItem>LUFS (BS.1770)</ComboBoxItem>
+                            </ComboBox>
+                            <TextBlock Grid.Column="2" Text="Target LUFS" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="14,0,8,0"/>
+                            <TextBox Grid.Column="3" x:Name="TxtTargetLufs" Text="-20" Width="60" HorizontalAlignment="Left" Height="26" FontSize="13"
+                                     Background="{DynamicResource BrushPanelBgAlt}" Foreground="{DynamicResource BrushTextPrimary}"
+                                     BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                        </Grid>
+
+                        <CheckBox x:Name="ChkTrimSilence" Content="Trim leading/trailing silence from each chapter"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,4"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Background & Intro/Outro (#14) -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="Background &amp; Intro/Outro" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,4"/>
+                        <TextBlock Text="Optional. Requires ffmpeg on PATH. Leave blank to disable."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" Margin="0,0,0,10"/>
+
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Intro" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"/>
+                            <TextBox Grid.Column="1" x:Name="TxtIntroPath" IsReadOnly="True" Height="26" FontSize="12"
+                                     Background="{DynamicResource BrushPanelBgAlt}" Foreground="{DynamicResource BrushTextPrimary}"
+                                     BorderBrush="{DynamicResource BrushBorder}" Padding="6,2" VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="2" Content="…" Width="32" Height="26" Margin="6,0,4,0" Click="BtnBrowseIntro_Click"/>
+                            <Button Grid.Column="3" Content="✕" Width="28" Height="26" Click="BtnClearIntro_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Outro" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"/>
+                            <TextBox Grid.Column="1" x:Name="TxtOutroPath" IsReadOnly="True" Height="26" FontSize="12"
+                                     Background="{DynamicResource BrushPanelBgAlt}" Foreground="{DynamicResource BrushTextPrimary}"
+                                     BorderBrush="{DynamicResource BrushBorder}" Padding="6,2" VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="2" Content="…" Width="32" Height="26" Margin="6,0,4,0" Click="BtnBrowseOutro_Click"/>
+                            <Button Grid.Column="3" Content="✕" Width="28" Height="26" Click="BtnClearOutro_Click"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Bg music" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"/>
+                            <TextBox Grid.Column="1" x:Name="TxtBackgroundPath" IsReadOnly="True" Height="26" FontSize="12"
+                                     Background="{DynamicResource BrushPanelBgAlt}" Foreground="{DynamicResource BrushTextPrimary}"
+                                     BorderBrush="{DynamicResource BrushBorder}" Padding="6,2" VerticalContentAlignment="Center"/>
+                            <Button Grid.Column="2" Content="…" Width="32" Height="26" Margin="6,0,4,0" Click="BtnBrowseBackground_Click"/>
+                            <Button Grid.Column="3" Content="✕" Width="28" Height="26" Click="BtnClearBackground_Click"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <TextBlock Text="Bg volume %" VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="0,0,8,0"/>
+                            <TextBox x:Name="TxtBgVolume" Text="15" Width="50" Height="26" FontSize="13"
+                                     Background="{DynamicResource BrushPanelBgAlt}" Foreground="{DynamicResource BrushTextPrimary}"
+                                     BorderBrush="{DynamicResource BrushBorder}" Padding="6,2"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Theme -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,4">
+                    <StackPanel>
+                        <TextBlock Text="Appearance" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Theme" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="CmbTheme" Width="140" Height="26" FontSize="12">
+                                <ComboBoxItem>Dark</ComboBoxItem>
+                                <ComboBoxItem>Light</ComboBoxItem>
+                                <ComboBoxItem>Midnight</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Cancel" Width="90" Height="34" Margin="0,0,10,0" Click="BtnCancel_Click"/>
+            <Button Content="Save" Width="90" Height="34" Background="{DynamicResource BrushAccentBlue}"
+                    Foreground="White" Click="BtnSave_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

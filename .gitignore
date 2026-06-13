@@ -1,0 +1,26 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+publish/
+*.user
+
+# TTS model weights (downloaded on first run by ModelDownloader)
+**/Models/
+
+# GPU sidecar runtime (created on the user's machine)
+TTSApp/python/.venv/
+TTSApp/python/runtime/
+TTSApp/python/cache/
+TTSApp/python/__pycache__/
+TTSApp/python/**/__pycache__/
+TTSApp/python/setup.log
+TTSApp/python/server.pid
+
+# Inno Setup output
+build/Output/
+
+# IDE / OS
+.vs/
+*.suo
+Thumbs.db
+.DS_Store

@@ -1,0 +1,13 @@
+# TTSApp GPU sidecar (Phase 1: XTTS v2)
+# Install on the GPU PC inside a venv. Torch must match your CUDA version:
+#   https://pytorch.org/get-started/locally/
+# Example (CUDA 12.1):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# torch is installed separately from the CUDA index by the app (do NOT list it here —
+# listing it makes pip re-resolve torch and can hang for many minutes).
+TTS>=0.22.0
+chatterbox-tts
+fastapi
+uvicorn
+numpy

@@ -1,0 +1,155 @@
+using System;
+using System.Linq;
+using System.Windows;
+using System.Windows.Controls;
+
+namespace TTSApp
+{
+    public partial class SettingsWindow : Window
+    {
+        public SettingsWindow()
+        {
+            InitializeComponent();
+            Loaded += SettingsWindow_Loaded;
+        }
+
+        private void SettingsWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            TxtRewind.Text = AppSettings.RewindSeconds.ToString();
+            TxtForward.Text = AppSettings.ForwardSeconds.ToString();
+            ChkAnnounce.IsChecked = AppSettings.AnnounceChapterTitle;
+            ChkDialogMode.IsChecked = AppSettings.EnableDialogMode;
+            ChkMerge.IsChecked = AppSettings.MergeIntoSingleFile;
+            CmbNormMode.SelectedIndex = AppSettings.NormalizationMode;
+            TxtTargetLufs.Text = AppSettings.TargetLufs.ToString();
+            ChkTrimSilence.IsChecked = AppSettings.TrimSilence;
+            TxtIntroPath.Text = AppSettings.IntroAudioPath ?? "";
+            TxtOutroPath.Text = AppSettings.OutroAudioPath ?? "";
+            TxtBackgroundPath.Text = AppSettings.BackgroundAudioPath ?? "";
+            TxtBgVolume.Text = AppSettings.BackgroundVolumePercent.ToString();
+            CmbExportPreset.SelectedItem = CmbExportPreset.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(i => (i.Content.ToString() ?? "").StartsWith(AppSettings.ExportPreset))
+                ?? CmbExportPreset.Items[0];
+            TxtCommaPause.Text = AppSettings.PauseAfterCommaMs.ToString();
+            TxtSentencePause.Text = AppSettings.PauseAfterSentenceMs.ToString();
+            TxtEllipsisPause.Text = AppSettings.PauseAfterEllipsisMs.ToString();
+            TxtParagraphPause.Text = AppSettings.PauseAfterParagraphMs.ToString();
+            SliderPauseScale.Value = AppSettings.PauseScalePercent;
+            LblPauseScale.Text = $"{AppSettings.PauseScalePercent}%";
+
+            CmbTheme.SelectedItem = CmbTheme.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(i => i.Content.ToString() == AppSettings.Theme);
+
+            // Populate dialog voice dropdown
+            CmbDialogVoice.Items.Clear();
+            // We need speaker names from MainWindow's TTS engine, but this window doesn't have access.
+            // Use a simple list of known Kokoro names as fallback.
+            var knownNames = new[] { "af", "af_bella", "af_nicole", "af_sarah", "af_sky",
+                "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis" };
+            foreach (var n in knownNames) CmbDialogVoice.Items.Add(n);
+            if (AppSettings.DialogVoiceId >= 0 && AppSettings.DialogVoiceId < CmbDialogVoice.Items.Count)
+                CmbDialogVoice.SelectedIndex = AppSettings.DialogVoiceId;
+            else
+                CmbDialogVoice.SelectedIndex = Math.Min(1, CmbDialogVoice.Items.Count - 1);
+        }
+
+        private void BtnSave_Click(object sender, RoutedEventArgs e)
+        {
+            if (int.TryParse(TxtRewind.Text, out int rewind) && rewind > 0)
+                AppSettings.RewindSeconds = rewind;
+            if (int.TryParse(TxtForward.Text, out int forward) && forward > 0)
+                AppSettings.ForwardSeconds = forward;
+            if (int.TryParse(TxtCommaPause.Text, out int commaPause) && commaPause >= 0)
+                AppSettings.PauseAfterCommaMs = commaPause;
+            if (int.TryParse(TxtSentencePause.Text, out int sentPause) && sentPause >= 0)
+                AppSettings.PauseAfterSentenceMs = sentPause;
+            if (int.TryParse(TxtEllipsisPause.Text, out int ellipsisPause) && ellipsisPause >= 0)
+                AppSettings.PauseAfterEllipsisMs = ellipsisPause;
+            if (int.TryParse(TxtParagraphPause.Text, out int paraPause) && paraPause >= 0)
+                AppSettings.PauseAfterParagraphMs = paraPause;
+            AppSettings.PauseScalePercent = (int)SliderPauseScale.Value;
+
+            AppSettings.AnnounceChapterTitle = ChkAnnounce.IsChecked == true;
+            AppSettings.EnableDialogMode = ChkDialogMode.IsChecked == true;
+            AppSettings.MergeIntoSingleFile = ChkMerge.IsChecked == true;
+            AppSettings.NormalizationMode = CmbNormMode.SelectedIndex < 0 ? 0 : CmbNormMode.SelectedIndex;
+            AppSettings.NormalizeAudio = AppSettings.NormalizationMode != 0;
+            if (double.TryParse(TxtTargetLufs.Text, out double lufs)) AppSettings.TargetLufs = lufs;
+            AppSettings.TrimSilence = ChkTrimSilence.IsChecked == true;
+            AppSettings.IntroAudioPath = string.IsNullOrWhiteSpace(TxtIntroPath.Text) ? null : TxtIntroPath.Text;
+            AppSettings.OutroAudioPath = string.IsNullOrWhiteSpace(TxtOutroPath.Text) ? null : TxtOutroPath.Text;
+            AppSettings.BackgroundAudioPath = string.IsNullOrWhiteSpace(TxtBackgroundPath.Text) ? null : TxtBackgroundPath.Text;
+            if (int.TryParse(TxtBgVolume.Text, out int bgvol) && bgvol >= 0 && bgvol <= 100)
+                AppSettings.BackgroundVolumePercent = bgvol;
+            if (CmbExportPreset.SelectedItem is ComboBoxItem presetItem)
+                AppSettings.ExportPreset = (presetItem.Content.ToString() ?? "Custom").Split(' ')[0];
+            AppSettings.DialogVoiceId = CmbDialogVoice.SelectedIndex;
+
+            if (CmbTheme.SelectedItem is ComboBoxItem item)
+            {
+                AppSettings.Theme = item.Content.ToString() ?? "Dark";
+                ThemeManager.ApplyTheme(AppSettings.Theme);
+            }
+            AppSettings.Save();
+            DialogResult = true;
+            Close();
+        }
+
+        // #17 — applying a preset fills in the loudness/trim controls.
+        private void CmbExportPreset_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CmbExportPreset.SelectedItem is not ComboBoxItem item) return;
+            string name = item.Content.ToString() ?? "";
+            // Guard: controls may not exist yet during initial load.
+            if (CmbNormMode == null) return;
+
+            if (name.StartsWith("ACX"))
+            {
+                CmbNormMode.SelectedIndex = 3; // LUFS
+                TxtTargetLufs.Text = "-20";
+                ChkTrimSilence.IsChecked = true;
+            }
+            else if (name.StartsWith("Podcast"))
+            {
+                CmbNormMode.SelectedIndex = 3;
+                TxtTargetLufs.Text = "-16";
+                ChkTrimSilence.IsChecked = true;
+            }
+            else if (name.StartsWith("Plain"))
+            {
+                CmbNormMode.SelectedIndex = 0; // Off
+                ChkTrimSilence.IsChecked = false;
+            }
+            // "Custom" leaves the controls as-is.
+        }
+
+        private void SliderPauseScale_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (LblPauseScale != null)
+                LblPauseScale.Text = $"{(int)e.NewValue}%";
+        }
+
+        private static string? PickAudioFile()
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Select audio file",
+                Filter = "Audio files|*.mp3;*.wav;*.flac;*.m4a;*.ogg|All files|*.*"
+            };
+            return dlg.ShowDialog() == true ? dlg.FileName : null;
+        }
+
+        private void BtnBrowseIntro_Click(object sender, RoutedEventArgs e) { var f = PickAudioFile(); if (f != null) TxtIntroPath.Text = f; }
+        private void BtnClearIntro_Click(object sender, RoutedEventArgs e) => TxtIntroPath.Text = "";
+        private void BtnBrowseOutro_Click(object sender, RoutedEventArgs e) { var f = PickAudioFile(); if (f != null) TxtOutroPath.Text = f; }
+        private void BtnClearOutro_Click(object sender, RoutedEventArgs e) => TxtOutroPath.Text = "";
+        private void BtnBrowseBackground_Click(object sender, RoutedEventArgs e) { var f = PickAudioFile(); if (f != null) TxtBackgroundPath.Text = f; }
+        private void BtnClearBackground_Click(object sender, RoutedEventArgs e) => TxtBackgroundPath.Text = "";
+
+        private void BtnCancel_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = false;
+            Close();
+        }
+    }
+}
