@@ -2,8 +2,8 @@
 # torch + torchaudio MUST come from the same CUDA index or torchaudio's C extension
 # fails with "WinError 127". The extra-index lets pip pull both matched from cu121.
 --extra-index-url https://download.pytorch.org/whl/cu121
-torch
-torchaudio
+torch==2.4.1
+torchaudio==2.4.1
 coqui-tts
 # Pin transformers to a version that still has `isin_mps_friendly` (coqui-tts needs it).
 transformers==4.46.3
