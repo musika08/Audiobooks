@@ -5,6 +5,7 @@ using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using SharpCompress.Common;
 using SharpCompress.Readers;
@@ -232,11 +233,12 @@ namespace TTSApp
             Report("Python environment ready.");
         }
 
-        // Locate a base interpreter to build the venv from. Prefers a system Python;
-        // if none exists, downloads a private portable CPython (no system install).
+        // Locate a base interpreter to build the venv from. Prefers a system Python in the
+        // 3.10–3.11 range (TTS deps don't build on 3.12+); otherwise uses the bundled 3.11.
         private static string FindBasePython()
         {
-            foreach (var (file, args) in new[] { ("py", "-3"), ("python", "") })
+            // Prefer a 3.11 launcher explicitly, then any python, but reject 3.12+.
+            foreach (var (file, args) in new[] { ("py", "-3.11"), ("py", "-3.10"), ("py", "-3"), ("python", "") })
             {
                 try
                 {
@@ -251,12 +253,19 @@ namespace TTSApp
                     };
                     using var p = Process.Start(psi);
                     if (p == null) continue;
+                    string verOut = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
                     p.WaitForExit(10000);
-                    if (p.ExitCode == 0)
+                    if (p.ExitCode != 0) continue;
+
+                    // Parse "Python 3.11.9" — only accept 3.10/3.11 (TTS packages fail to build on 3.12+).
+                    var vm = Regex.Match(verOut, @"Python\s+3\.(\d+)");
+                    if (vm.Success && int.TryParse(vm.Groups[1].Value, out int minor) && (minor == 10 || minor == 11))
                         return string.IsNullOrEmpty(args) ? file : $"{file}|{args}";
                 }
                 catch { /* try next */ }
             }
+            // System Python missing or too new (3.12+) → use the bundled portable 3.11.
+            Report("Using a bundled Python 3.11 (system Python is missing or too new for the TTS packages)...");
             return EnsureEmbeddedPython();
         }
 
@@ -461,7 +470,10 @@ namespace TTSApp
                 {
                     var idle = DateTime.UtcNow - lastProgress;
                     if (everDownloaded)
-                        Report($"Model downloaded ({size / 1_000_000.0:N0} MB) — loading into the GPU...");
+                    {
+                        Report($"Model downloaded ({size / 1_000_000.0:N0} MB) — loading into the GPU (can take a minute)...");
+                        Progress(null); // indeterminate during load so the bar isn't stuck at 97%
+                    }
                     // Only give up if nothing has progressed for the whole stall window.
                     if (idle > stallLimit)
                         throw new TimeoutException(
