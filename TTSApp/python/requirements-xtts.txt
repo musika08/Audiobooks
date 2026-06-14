@@ -6,7 +6,7 @@ coqui-tts==0.27.5
 # coqui-tts needs transformers>=4.57 but its XTTS code imports isin_mps_friendly, which
 # transformers removed in 5.x. Cap below 5 so we land on the last 4.x (4.57.x) that has it.
 transformers>=4.57,<5
-librosa>=0.10,<0.11  # pitch-preserving speed change (post-synthesis time-stretch)
+librosa>=0.10  # pitch-preserving speed change (post-synthesis time-stretch); no upper cap (coqui-tts needs >=0.11)
 fastapi==0.128.0
 uvicorn==0.49.0
 numpy==1.26.4

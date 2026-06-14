@@ -6,7 +6,7 @@ torchaudio==2.4.1
 vibevoice @ https://github.com/vibevoice-community/VibeVoice/archive/refs/heads/main.zip
 # transformers is pinned by vibevoice itself (0.1.0 requires ==4.51.3); don't re-pin here.
 accelerate
-librosa>=0.10,<0.11  # pitch-preserving speed change (post-synthesis time-stretch)
+librosa>=0.10  # pitch-preserving speed change (post-synthesis time-stretch)
 fastapi==0.128.0
 uvicorn==0.49.0
 numpy==1.26.4
