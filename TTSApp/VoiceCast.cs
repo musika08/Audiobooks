@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using NAudio.Lame;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -27,6 +28,12 @@ namespace TTSApp
         public static void Render(string text, float speed, string outputPath, Role narrator, Role dialogue,
             CancellationToken token = default)
         {
+            RenderAsync(text, speed, outputPath, narrator, dialogue, token).GetAwaiter().GetResult();
+        }
+
+        public static async Task RenderAsync(string text, float speed, string outputPath, Role narrator, Role dialogue,
+            CancellationToken token = default)
+        {
             var segments = TtsEngine.GetDialogSegments(text);
             var temps = new List<string>();
 
@@ -44,12 +51,12 @@ namespace TTSApp
 
                     string tmp = Path.Combine(Path.GetTempPath(), $"cast_{Guid.NewGuid():N}.wav");
                     AppSettings.CloneReferencePath = role.CloneRef; // ignored by Kokoro engines
-                    role.Engine.Generate(seg.Text, role.SpeakerId, speed, tmp);
+                    await role.Engine.GenerateAsync(seg.Text, role.SpeakerId, speed, tmp, token).ConfigureAwait(false);
 
                     if (AppSettings.LevelSegmentVolume)
                     {
                         try { AudioNormalizer.NormalizeLoudness(tmp, targetRmsDbfs: -20f); }
-                        catch { /* leveling is best-effort */ }
+                        catch (Exception ex) { Logging.Log.Error(ex, "Voice Cast segment leveling failed"); }
                     }
                     temps.Add(tmp);
                 }
@@ -61,13 +68,13 @@ namespace TTSApp
             }
 
             if (temps.Count == 0)
-                throw new Exception("Voice Cast produced no audio (the chapter text may be empty).");
+                throw new InvalidOperationException("Voice Cast produced no audio (the chapter text may be empty).");
 
             MergeResampleExport(temps, outputPath);
 
             foreach (var t in temps)
             {
-                try { File.Delete(t); } catch { /* ignore */ }
+                try { File.Delete(t); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete Voice Cast temp file"); }
             }
         }
 

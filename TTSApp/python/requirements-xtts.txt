@@ -2,9 +2,9 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
 torch==2.4.1
 torchaudio==2.4.1
-coqui-tts
+coqui-tts==0.27.5
 # transformers must still have `isin_mps_friendly` (coqui-tts needs it).
 transformers==4.46.3
-fastapi
-uvicorn
-numpy>=1.26
+fastapi==0.128.0
+uvicorn==0.49.0
+numpy==1.26.4

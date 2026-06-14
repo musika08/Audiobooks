@@ -79,6 +79,55 @@ namespace TTSApp
         public static string VoicesDir => Path.Combine(SettingsDir, "voices");
         public static Dictionary<string, string> PronunciationDict { get; set; } = new();
 
+        /// <summary>
+        /// Validates a voice-clone reference path and returns a path that is guaranteed
+        /// to reside under <see cref="VoicesDir"/>. Files outside the voices directory are
+        /// copied into it. Paths containing directory traversal or unsupported extensions
+        /// are rejected and return null.
+        /// </summary>
+        public static string? ResolveCloneReferencePath(string? requestedPath)
+        {
+            if (string.IsNullOrWhiteSpace(requestedPath)) return null;
+
+            string ext = Path.GetExtension(requestedPath).ToLowerInvariant();
+            if (ext != ".wav" && ext != ".mp3" && ext != ".flac" && ext != ".ogg" && ext != ".m4a")
+            {
+                Logging.Log.Warn($"Rejected clone reference with unsupported extension: {requestedPath}");
+                return null;
+            }
+
+            try
+            {
+                string fullRequested = Path.GetFullPath(requestedPath);
+                string voicesRoot = Path.GetFullPath(VoicesDir);
+                Directory.CreateDirectory(voicesRoot);
+
+                // Reject traversal attempts.
+                if (!fullRequested.StartsWith(voicesRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!File.Exists(fullRequested))
+                    {
+                        Logging.Log.Warn($"Clone reference outside voices dir and does not exist: {requestedPath}");
+                        return null;
+                    }
+
+                    // Copy the file into the voices directory so the server only ever reads from there.
+                    string fileName = $"{Guid.NewGuid():N}{ext}";
+                    string dest = Path.Combine(voicesRoot, fileName);
+                    File.Copy(fullRequested, dest, overwrite: true);
+                    Logging.Log.Info($"Copied clone reference into voices dir: {dest}");
+                    return dest;
+                }
+
+                return File.Exists(fullRequested) ? fullRequested : null;
+            }
+            catch (Exception ex)
+            {
+                Logging.Log.Error(ex, $"Failed to resolve clone reference path: {requestedPath}");
+                return null;
+            }
+        }
+
         public static void Load()
         {
             try
@@ -144,7 +193,7 @@ namespace TTSApp
                     if (dict != null) PronunciationDict = dict;
                 }
             }
-            catch { /* ignore load errors */ }
+            catch (Exception ex) { Logging.Log.Error(ex, "Failed to load settings"); }
         }
 
         public static void Save()
@@ -204,7 +253,7 @@ namespace TTSApp
                 File.WriteAllText(SettingsPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
                 File.WriteAllText(DictPath, JsonSerializer.Serialize(PronunciationDict, new JsonSerializerOptions { WriteIndented = true }));
             }
-            catch { /* ignore save errors */ }
+            catch (Exception ex) { Logging.Log.Error(ex, "Failed to save settings"); }
         }
 
         public static string ApplyDictionary(string text)

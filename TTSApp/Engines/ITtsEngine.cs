@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace TTSApp
 {
@@ -12,5 +14,17 @@ namespace TTSApp
         void Initialize(string provider);
         List<string> GetSpeakerNames();
         void Generate(string text, int speakerId, float speed, string outputPath);
+
+        /// <summary>
+        /// Async, cancellable version of <see cref="Generate"/>.
+        /// The default implementation runs the synchronous method on the thread pool.
+        /// </summary>
+        Task GenerateAsync(string text, int speakerId, float speed, string outputPath, CancellationToken cancellationToken = default)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromCanceled(cancellationToken);
+
+            return Task.Run(() => Generate(text, speakerId, speed, outputPath), cancellationToken);
+        }
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using NAudio.Lame;
 using NAudio.Wave;
 using SherpaOnnx;
@@ -16,6 +17,8 @@ namespace TTSApp
         private readonly string _modelPath;
         private readonly string _modelName;
         private bool _levelSegments;
+        private readonly SemaphoreSlim _lock = new(1, 1);
+        private bool _disposed;
 
         public bool IsInitialized => _initialized;
         public string CurrentProvider { get; private set; } = "cpu";
@@ -162,9 +165,22 @@ namespace TTSApp
 
         public void Initialize(string provider)
         {
+            _lock.Wait();
+            try
+            {
+                InitializeCore(provider);
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        private void InitializeCore(string provider)
+        {
             const int numThreads = 4;
             if (_initialized && CurrentProvider == provider) return;
-            if (_initialized) Dispose();
+            if (_initialized) DisposeResources();
 
             CurrentProvider = provider;
 
@@ -194,6 +210,20 @@ namespace TTSApp
 
         public void Generate(string text, int speakerId, float speed, string outputPath)
         {
+            _lock.Wait();
+            try
+            {
+                GenerateCore(text, speakerId, speed, outputPath);
+            }
+            finally
+            {
+                _lock.Release();
+            }
+        }
+
+        private void GenerateCore(string text, int speakerId, float speed, string outputPath)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(TtsEngine));
             if (_tts == null) throw new InvalidOperationException("TTS engine is not initialized.");
 
             text = NormalizeTextForTts(text);
@@ -248,7 +278,7 @@ namespace TTSApp
 
             foreach (var f in tempFiles)
             {
-                try { File.Delete(f); } catch { /* ignore */ }
+                try { File.Delete(f); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete temp TTS file"); }
             }
         }
 
@@ -328,6 +358,10 @@ namespace TTSApp
             // Level each chunk to a common loudness so different voices match (dialog mode).
             if (_levelSegments)
                 AudioNormalizer.NormalizeLoudness(tempFile, targetRmsDbfs: -20f);
+
+            // Fade chunk edges to zero so raw concatenation doesn't click/pop at boundaries
+            // (otherwise an audible artifact appears after every punctuation mark).
+            AudioNormalizer.ApplyEdgeFades(tempFile);
 
             tempFiles.Add(tempFile);
         }
@@ -504,6 +538,22 @@ namespace TTSApp
         }
 
         public void Dispose()
+        {
+            if (_disposed) return;
+            _lock.Wait();
+            try
+            {
+                DisposeResources();
+            }
+            finally
+            {
+                _lock.Release();
+                _lock.Dispose();
+                _disposed = true;
+            }
+        }
+
+        private void DisposeResources()
         {
             _tts?.Dispose();
             _tts = null;

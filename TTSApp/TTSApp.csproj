@@ -5,16 +5,16 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <UseWindowsForms>false</UseWindowsForms>
-    <NoWarn>NU1902</NoWarn>
+    <Version>1.0.18</Version>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="*" />
+    <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.2" />
     <PackageReference Include="PdfPig" Version="0.1.9" />
     <PackageReference Include="TagLibSharp" Version="2.3.0" />
     <PackageReference Include="VersOne.Epub" Version="3.3.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="NAudio.Lame" Version="2.1.0" />
-    <PackageReference Include="SharpCompress" Version="0.39.0" />
+    <PackageReference Include="SharpCompress" Version="0.49.1" />
   </ItemGroup>
   <ItemGroup>
     <!-- Ship the Python sidecar next to the exe -->

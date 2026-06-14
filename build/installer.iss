@@ -1,11 +1,13 @@
 ; Inno Setup script for TTSApp (AI Audiobook Studio)
 ; 1. Run build\publish.ps1 first to produce the .\publish folder.
 ; 2. Install Inno Setup (https://jrsoftware.org/isinfo.php).
-; 3. Open this file in Inno Setup Compiler and Build, or:  iscc build\installer.iss
+; 3. Open this file in Inno Setup Compiler and Build, or:  iscc build\installer.iss /DAppVersion=1.0.17
 
 #define AppName "AI Audiobook Studio"
 #define AppExe "TTSApp.exe"
+#ifndef AppVersion
 #define AppVersion "1.0.17"
+#endif
 #define Publisher "TTSApp"
 
 [Setup]

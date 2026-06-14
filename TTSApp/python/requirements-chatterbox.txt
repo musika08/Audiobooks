@@ -2,6 +2,6 @@
 # chatterbox-tts pins torch==2.6.0 (CUDA 12.4) and numpy<1.26, so we let it choose and
 # just point pip at the cu124 wheel index (don't pin torch/numpy ourselves).
 --extra-index-url https://download.pytorch.org/whl/cu124
-chatterbox-tts
-fastapi
-uvicorn
+chatterbox-tts==0.1.7
+fastapi==0.128.0
+uvicorn==0.49.0

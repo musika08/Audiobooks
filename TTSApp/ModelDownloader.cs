@@ -76,7 +76,7 @@ namespace TTSApp
             try
             {
                 using (var stream = File.OpenRead(archivePath))
-                using (var reader = ReaderFactory.Open(stream))
+                using (var reader = ReaderFactory.OpenReader(stream, new SharpCompress.Readers.ReaderOptions { LeaveStreamOpen = false }))
                 {
                     while (reader.MoveToNextEntry())
                     {

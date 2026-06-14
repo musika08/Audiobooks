@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using SharpCompress.Common;
 using SharpCompress.Readers;
 
@@ -16,16 +19,49 @@ namespace TTSApp
     // The server process is shared/static so switching providers does not reload the model.
     public class PythonSidecarEngine : ITtsEngine
     {
-        private const int Port = 8765;
-        private static readonly string BaseUrl = $"http://127.0.0.1:{Port}";
-        private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(10) };
+        private static int _port = 8765;
+        private static string BaseUrl => $"http://127.0.0.1:{_port}";
+        private static readonly HttpClient Http = new(
+            new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+        { Timeout = TimeSpan.FromMinutes(10) };
 
         private const string TorchIndexUrl = "https://download.pytorch.org/whl/cu121";
 
         private static Process? _serverProcess;
+        private static CancellationTokenSource? _serverProcessCts;
         private static string _runningModel = "";
         private static readonly object _lock = new();
         private static readonly StringBuilder _serverLog = new();
+
+        private static int FindFreePort(int preferred, int fallbackStart = 10000)
+        {
+            if (IsPortAvailable(preferred)) return preferred;
+            for (int port = fallbackStart; port < fallbackStart + 1000; port++)
+            {
+                if (IsPortAvailable(port)) return port;
+            }
+            throw new InvalidOperationException("Could not find a free TCP port for the TTS sidecar.");
+        }
+
+        private static bool IsPortAvailable(int port)
+        {
+            try
+            {
+                using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                listener.Start();
+                listener.Stop();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static readonly HashSet<string> KnownModels = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "xtts-v2", "chatterbox", "fish-opus", "vibevoice"
+        };
 
         // UI hooks: set by MainWindow. Invoked off the UI thread.
         public static Action<string>? StatusCallback;
@@ -35,6 +71,8 @@ namespace TTSApp
         private readonly string _modelName;
         private List<string> _speakers = new();
         private bool _initialized;
+        private readonly SemaphoreSlim _operationLock = new(1, 1);
+        private bool _disposed;
 
         public bool IsInitialized => _initialized;
         public string CurrentProvider { get; private set; } = "cuda";
@@ -71,13 +109,30 @@ namespace TTSApp
 
         public PythonSidecarEngine(string modelName)
         {
+            if (!KnownModels.Contains(modelName))
+                throw new ArgumentException($"Unknown GPU model '{modelName}'. Supported: {string.Join(", ", KnownModels)}.", nameof(modelName));
             _modelName = modelName;
         }
 
         public void Initialize(string provider)
         {
+            _operationLock.Wait();
+            try
+            {
+                InitializeCore(provider);
+            }
+            finally
+            {
+                _operationLock.Release();
+            }
+        }
+
+        private void InitializeCore(string provider)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(PythonSidecarEngine));
             CurrentProvider = provider;
-            try { File.WriteAllText(SetupLog, $"=== {DateTime.Now} — initializing {_modelName} ==={Environment.NewLine}"); } catch { }
+            try { File.WriteAllText(SetupLog, $"=== {DateTime.Now} — initializing {_modelName} ==={Environment.NewLine}"); }
+            catch (Exception ex) { Logging.Log.Error(ex, "Failed to initialize setup log"); }
             Progress(null); // indeterminate "working" until/unless a step reports real %
             EnsureDependencies();
             EnsureServerRunning();
@@ -93,36 +148,59 @@ namespace TTSApp
         private static void Report(string msg)
         {
             StatusCallback?.Invoke(msg);
-            Log(msg);
+            LogSetup(msg);
         }
         private static void Progress(double? fraction) => ProgressCallback?.Invoke(fraction);
 
         // Append everything (status + raw pip/server lines) to python\setup.log for diagnosis.
-        private static void Log(string line)
+        private static void LogSetup(string line)
         {
             try
             {
                 lock (_logLock)
                     File.AppendAllText(SetupLog, $"{DateTime.Now:HH:mm:ss}  {line}{Environment.NewLine}");
             }
-            catch { /* logging must never throw */ }
+            catch (Exception ex)
+            {
+                // Logging must never throw, but record the failure in the app log.
+                Logging.Log.Error(ex, "Failed to write Python sidecar setup log");
+            }
         }
 
         public List<string> GetSpeakerNames() => _speakers;
 
         public void Generate(string text, int speakerId, float speed, string outputPath)
         {
+            GenerateAsync(text, speakerId, speed, outputPath, CancellationToken.None).GetAwaiter().GetResult();
+        }
+
+        public async Task GenerateAsync(string text, int speakerId, float speed, string outputPath, CancellationToken cancellationToken)
+        {
+            await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await GenerateCoreAsync(text, speakerId, speed, outputPath, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _operationLock.Release();
+            }
+        }
+
+        private async Task GenerateCoreAsync(string text, int speakerId, float speed, string outputPath, CancellationToken cancellationToken)
+        {
+            if (_disposed) throw new ObjectDisposedException(nameof(PythonSidecarEngine));
             if (!_initialized) throw new InvalidOperationException("Sidecar engine is not initialized.");
 
             string speaker = speakerId >= 0 && speakerId < _speakers.Count ? _speakers[speakerId] : "";
-            string speakerWav = AppSettings.CloneReferencePath ?? "";
+            string? speakerWav = AppSettings.ResolveCloneReferencePath(AppSettings.CloneReferencePath);
 
             double pauseScale = AppSettings.PauseScalePercent / 100.0;
             var payload = new
             {
                 text,
                 speaker,
-                speaker_wav = speakerWav,
+                speaker_wav = speakerWav ?? "",
                 speed,
                 language = "en",
                 denoise = AppSettings.DereverbCloned,
@@ -140,16 +218,33 @@ namespace TTSApp
             var json = JsonSerializer.Serialize(payload);
 
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var resp = Http.PostAsync($"{BaseUrl}/synthesize", content).GetAwaiter().GetResult();
+
+            // If the server crashes mid-generation, the linked token is cancelled via the Exited event.
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _serverProcessCts?.Token ?? CancellationToken.None);
+
+            using var resp = await Http.SendAsync(
+                new HttpRequestMessage(HttpMethod.Post, $"{BaseUrl}/synthesize") { Content = content },
+                HttpCompletionOption.ResponseHeadersRead,
+                linkedCts.Token).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
             {
-                string body = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                throw new Exception($"Sidecar /synthesize failed: {(int)resp.StatusCode} {resp.ReasonPhrase}\n{body}");
+                string body = await resp.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
+                throw new InvalidOperationException($"Sidecar /synthesize failed: {(int)resp.StatusCode} {resp.ReasonPhrase}\n{body}");
             }
 
-            var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
-            File.WriteAllBytes(outputPath, bytes);
+            // Guard against the server returning a JSON error body as audio.
+            var contentType = resp.Content.Headers.ContentType?.MediaType;
+            if (!string.Equals(contentType, "audio/wav", StringComparison.OrdinalIgnoreCase))
+            {
+                string body = await resp.Content.ReadAsStringAsync(linkedCts.Token).ConfigureAwait(false);
+                throw new InvalidOperationException($"Sidecar returned unexpected content type '{contentType}': {body}");
+            }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync(linkedCts.Token).ConfigureAwait(false);
+            await File.WriteAllBytesAsync(outputPath, bytes, linkedCts.Token).ConfigureAwait(false);
         }
 
         // ----- server process management -----
@@ -164,7 +259,7 @@ namespace TTSApp
 
                 if (_serverProcess is { HasExited: false })
                 {
-                    try { _serverProcess.Kill(true); } catch { /* ignore */ }
+                    try { _serverProcess.Kill(true); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to kill previous sidecar server"); }
                     _serverProcess = null;
                 }
 
@@ -175,38 +270,57 @@ namespace TTSApp
                 var psi = new ProcessStartInfo
                 {
                     FileName = VenvPython,
-                    Arguments = $"\"{script}\" --port {Port} --model {_modelName}",
                     WorkingDirectory = ScriptDir,
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
+                psi.ArgumentList.Add(script);
+                _port = FindFreePort(_port);
+                psi.ArgumentList.Add("--port");
+                psi.ArgumentList.Add(_port.ToString(CultureInfo.InvariantCulture));
+                psi.ArgumentList.Add("--model");
+                psi.ArgumentList.Add(_modelName);
+
                 psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
 
                 // #24 — keep downloaded model weights inside the app folder so the install stays portable.
                 string cacheDir = Path.Combine(ScriptDir, "cache");
-                try { Directory.CreateDirectory(cacheDir); } catch { }
+                try { Directory.CreateDirectory(cacheDir); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to create cache directory"); }
                 psi.EnvironmentVariables["HF_HOME"] = cacheDir;
                 psi.EnvironmentVariables["HUGGINGFACE_HUB_CACHE"] = Path.Combine(cacheDir, "hub");
                 psi.EnvironmentVariables["TORCH_HOME"] = Path.Combine(cacheDir, "torch");
                 psi.EnvironmentVariables["TTS_HOME"] = cacheDir; // Coqui XTTS
+
+                // Restrict voice-clone references to the app's voices folder.
+                string voicesDir = AppSettings.VoicesDir;
+                try { Directory.CreateDirectory(voicesDir); } catch { /* will be validated by server too */ }
+                psi.EnvironmentVariables["TTSAPP_VOICES_DIR"] = voicesDir;
 
                 try
                 {
                     Report($"Starting {_modelName} server — loading model (first run downloads weights)...");
                     lock (_serverLog) { _serverLog.Clear(); }
 
+                    _serverProcessCts?.Cancel();
+                    _serverProcessCts = new CancellationTokenSource();
+
                     _serverProcess = Process.Start(psi)
-                        ?? throw new Exception("Failed to start python process (Process.Start returned null).");
+                        ?? throw new InvalidOperationException("Failed to start python process (Process.Start returned null).");
+                    _serverProcess.EnableRaisingEvents = true;
+                    _serverProcess.Exited += (_, _) =>
+                    {
+                        try { _serverProcessCts.Cancel(); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to cancel server process CTS"); }
+                    };
                     _runningModel = _modelName;
-                    try { File.WriteAllText(PidFile, _serverProcess.Id.ToString()); } catch { /* ignore */ }
+                    try { File.WriteAllText(PidFile, _serverProcess.Id.ToString(CultureInfo.InvariantCulture)); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to write server PID file"); }
 
                     void OnServerLine(string? line)
                     {
                         if (string.IsNullOrWhiteSpace(line)) return;
                         lock (_serverLog) { _serverLog.AppendLine(line); }
-                        Log(line); // raw server/model-load line to setup.log
+                        LogSetup(line); // raw server/model-load line to setup.log
                         string shown = SummarizeServerLine(line);
                         if (shown.Length > 0) Report(shown);
                     }
@@ -233,7 +347,7 @@ namespace TTSApp
             if (Directory.Exists(VenvDir) && !File.Exists(DepsMarker))
             {
                 Report("Previous install was incomplete — rebuilding the environment...");
-                try { Directory.Delete(VenvDir, true); } catch { }
+                try { Directory.Delete(VenvDir, true); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete incomplete venv"); }
             }
 
             string requirements = RequirementsFile;
@@ -244,14 +358,14 @@ namespace TTSApp
             {
                 Report($"Setting up Python environment for {_modelName} (one-time)...");
                 string basePython = FindBasePython();
-                RunStep(basePython, $"-m venv \"{VenvDir}\"", "Creating virtual environment");
+                RunStep(basePython, new[] { "-m", "venv", VenvDir }, "Creating virtual environment");
             }
 
-            RunStep(VenvPython, "-m pip install --upgrade pip", "Upgrading pip");
+            RunStep(VenvPython, new[] { "-m", "pip", "install", "--upgrade", "pip" }, "Upgrading pip");
             // Each engine's requirements file declares its own torch/torchaudio version + CUDA index
             // (chatterbox needs torch 2.6, coqui needs 2.4), so we don't pre-install a fixed torch here.
             Report($"Installing {_modelName} dependencies (incl. PyTorch) — large download, several minutes...");
-            RunStep(VenvPython, $"-m pip install -r \"{requirements}\"", "Installing requirements");
+            RunStep(VenvPython, new[] { "-m", "pip", "install", "-r", requirements }, "Installing requirements");
 
             File.WriteAllText(DepsMarker, "cu121");
             Report("Python environment ready.");
@@ -285,12 +399,15 @@ namespace TTSApp
                 var psi = new ProcessStartInfo
                 {
                     FileName = file,
-                    Arguments = $"{args} --version".Trim(),
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true
                 };
+                if (!string.IsNullOrEmpty(args))
+                    psi.ArgumentList.Add(args);
+                psi.ArgumentList.Add("--version");
+
                 using var p = Process.Start(psi);
                 if (p == null) return null;
                 string verOut = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
@@ -305,7 +422,11 @@ namespace TTSApp
                 }
                 return string.IsNullOrEmpty(args) ? file : $"{file}|{args}";
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                Logging.Log.Error(ex, $"TryPython failed for {file} {args}");
+                return null;
+            }
         }
 
         // Download + extract a private CPython when the machine has no Python.
@@ -340,7 +461,7 @@ namespace TTSApp
                 }
 
                 archiveBytes = new FileInfo(archive).Length;
-                Log($"Downloaded portable Python archive: {archiveBytes:N0} bytes");
+                LogSetup($"Downloaded portable Python archive: {archiveBytes:N0} bytes");
                 if (archiveBytes < 5_000_000)
                     throw new Exception($"download was only {archiveBytes:N0} bytes (expected ~40 MB) — " +
                                         "a proxy/firewall is probably blocking GitHub release downloads.");
@@ -354,7 +475,7 @@ namespace TTSApp
                 {
                     System.Formats.Tar.TarFile.ExtractToDirectory(gz, RuntimeDir, overwriteFiles: true);
                 }
-                Log($"Extracted. python.exe present: {File.Exists(EmbeddedPython)}");
+                LogSetup($"Extracted. python.exe present: {File.Exists(EmbeddedPython)}");
             }
             catch (Exception ex)
             {
@@ -362,7 +483,7 @@ namespace TTSApp
             }
             finally
             {
-                try { File.Delete(archive); } catch { /* ignore */ }
+                try { File.Delete(archive); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete portable Python archive"); }
             }
 
             if (!File.Exists(EmbeddedPython))
@@ -373,30 +494,36 @@ namespace TTSApp
             return EmbeddedPython;
         }
 
-        private static void RunStep(string fileSpec, string args, string what)
+        private static void RunStep(string fileSpec, IEnumerable<string> arguments, string what)
         {
             Report($"{what}...");
 
             // FindBasePython may return "py|-3"; split the launcher prefix back out.
             string file = fileSpec;
-            string prefix = "";
+            string? prefix = null;
             int bar = fileSpec.IndexOf('|');
             if (bar >= 0)
             {
                 file = fileSpec[..bar];
-                prefix = fileSpec[(bar + 1)..] + " ";
+                prefix = fileSpec[(bar + 1)..];
             }
 
             var psi = new ProcessStartInfo
             {
                 FileName = file,
-                Arguments = prefix + args,
                 WorkingDirectory = ScriptDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true
             };
+
+            if (!string.IsNullOrEmpty(prefix))
+                psi.ArgumentList.Add(prefix);
+
+            foreach (var arg in arguments)
+                psi.ArgumentList.Add(arg);
+
             // Force pip to print live, unbuffered, line-by-line so the status bar keeps moving.
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             psi.EnvironmentVariables["PIP_PROGRESS_BAR"] = "off";
@@ -412,7 +539,7 @@ namespace TTSApp
             {
                 if (string.IsNullOrWhiteSpace(line)) return;
                 lock (log) { log.AppendLine(line); }
-                Log(line); // raw line to setup.log so you can see real progress
+                LogSetup(line); // raw line to setup.log so you can see real progress
                 string shown = SummarizePipLine(line);
                 if (shown.Length > 0) Report($"{what} — {shown}");
             }
@@ -421,7 +548,12 @@ namespace TTSApp
             p.ErrorDataReceived += (_, e) => OnLine(e.Data);
             p.BeginOutputReadLine();
             p.BeginErrorReadLine();
-            p.WaitForExit();
+
+            if (!p.WaitForExit((int)TimeSpan.FromMinutes(20).TotalMilliseconds))
+            {
+                try { p.Kill(true); } catch (Exception ex) { Logging.Log.Error(ex, $"Failed to kill pip step '{what}'"); }
+                throw new TimeoutException($"{what} timed out after 20 minutes.");
+            }
 
             if (p.ExitCode != 0)
             {
@@ -453,7 +585,9 @@ namespace TTSApp
         {
             line = line.Trim();
             // Skip uvicorn/asyncio noise.
-            if (line.StartsWith("INFO:") || line.StartsWith("WARNING:") || line.Contains("Uvicorn"))
+            if (line.StartsWith("INFO:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("WARNING:", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Uvicorn"))
                 return "";
 
             string[] keep = { "Download", "download", "model", "Model", "Loading", "voices",
@@ -503,7 +637,12 @@ namespace TTSApp
                     using var resp = Http.GetAsync($"{BaseUrl}/health").GetAwaiter().GetResult();
                     if (resp.IsSuccessStatusCode) return;
                 }
-                catch { /* not up yet */ }
+                catch (Exception ex)
+                {
+                    // Only log sporadically to avoid log spam during normal startup.
+                    if (DateTime.UtcNow.Second % 10 == 0)
+                        Logging.Log.Debug($"Sidecar health not ready yet: {ex.Message}");
+                }
 
                 long size = 0;
                 foreach (var d in watchDirs) size += DirSize(d);
@@ -571,11 +710,12 @@ namespace TTSApp
             {
                 if (_serverProcess is { HasExited: false })
                 {
-                    try { _serverProcess.Kill(true); } catch { /* ignore */ }
+                    try { _serverProcess.Kill(true); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to kill sidecar server during shutdown"); }
                 }
                 _serverProcess = null;
                 _runningModel = "";
-                try { if (File.Exists(PidFile)) File.Delete(PidFile); } catch { /* ignore */ }
+                try { _serverProcessCts?.Cancel(); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to cancel server process CTS during shutdown"); }
+                try { if (File.Exists(PidFile)) File.Delete(PidFile); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete PID file during shutdown"); }
             }
         }
 
@@ -589,12 +729,12 @@ namespace TTSApp
             {
                 foreach (var dir in Directory.GetDirectories(ScriptDir, ".venv-*"))
                 {
-                    try { Directory.Delete(dir, true); venvs++; } catch { }
+                    try { Directory.Delete(dir, true); venvs++; } catch (Exception ex) { Logging.Log.Error(ex, $"Failed to delete venv {dir}"); }
                 }
             }
-            catch { }
+            catch (Exception ex) { Logging.Log.Error(ex, "Failed to enumerate venvs for reset"); }
             bool runtime = false;
-            try { if (Directory.Exists(RuntimeDir)) { Directory.Delete(RuntimeDir, true); runtime = true; } } catch { }
+            try { if (Directory.Exists(RuntimeDir)) { Directory.Delete(RuntimeDir, true); runtime = true; } } catch (Exception ex) { Logging.Log.Error(ex, "Failed to delete runtime directory"); }
             return (venvs, runtime);
         }
 
@@ -609,22 +749,59 @@ namespace TTSApp
                     try
                     {
                         var p = Process.GetProcessById(pid);
-                        // Only kill if it's actually a python process (PID could have been reused).
-                        if (p.ProcessName.Contains("python", StringComparison.OrdinalIgnoreCase))
+                        // Verify the command line contains the expected script before killing,
+                        // since PIDs can be reused by unrelated processes.
+                        string? cmdLine = null;
+                        try
+                        {
+                            using var cmdProc = Process.Start(new ProcessStartInfo
+                            {
+                                FileName = "wmic",
+                                Arguments = $"process where \"ProcessId={pid}\" get CommandLine /value",
+                                RedirectStandardOutput = true,
+                                UseShellExecute = false,
+                                CreateNoWindow = true
+                            });
+                            if (cmdProc != null)
+                            {
+                                cmdLine = cmdProc.StandardOutput.ReadToEnd();
+                                cmdProc.WaitForExit(5000);
+                            }
+                        }
+                        catch (Exception ex) { Logging.Log.Error(ex, "Failed to query command line for stale PID"); }
+
+                        bool isOurServer = !string.IsNullOrEmpty(cmdLine)
+                            && cmdLine.Contains("tts_server.py", StringComparison.OrdinalIgnoreCase)
+                            && cmdLine.Contains(ScriptDir, StringComparison.OrdinalIgnoreCase);
+
+                        if (isOurServer && p.ProcessName.Contains("python", StringComparison.OrdinalIgnoreCase))
                             p.Kill(true);
+                        else if (!isOurServer)
+                            Logging.Log.Warn($"Stale PID {pid} does not match tts_server.py; not killing.");
                     }
-                    catch { /* process already gone */ }
+                    catch (Exception ex) { Logging.Log.Error(ex, $"Failed to kill stale sidecar process {pid}"); }
                 }
                 File.Delete(PidFile);
             }
-            catch { /* ignore */ }
+            catch (Exception ex) { Logging.Log.Error(ex, "CleanupStaleServer failed"); }
         }
 
         public void Dispose()
         {
-            // Engine instance goes away on provider switch, but the shared server stays alive
-            // so the heavy model is not reloaded. App exit calls ShutdownServer().
-            _initialized = false;
+            if (_disposed) return;
+            _operationLock.Wait();
+            try
+            {
+                // Engine instance goes away on provider switch, but the shared server stays alive
+                // so the heavy model is not reloaded. App exit calls ShutdownServer().
+                _initialized = false;
+            }
+            finally
+            {
+                _operationLock.Release();
+                _operationLock.Dispose();
+                _disposed = true;
+            }
         }
     }
 }

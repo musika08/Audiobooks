@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 
 namespace TTSApp
@@ -24,12 +25,34 @@ namespace TTSApp
             {
                 string mixed = NewTemp();
                 double vol = Math.Clamp(AppSettings.BackgroundVolumePercent, 0, 100) / 100.0;
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffmpeg,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
                 // Loop the bed to cover the whole book, lower its volume, mix, end with the narration.
-                string args = $"-y -i \"{current}\" -stream_loop -1 -i \"{bed}\" " +
-                              $"-filter_complex \"[1:a]volume={vol.ToString(System.Globalization.CultureInfo.InvariantCulture)}[bed];" +
-                              "[0:a][bed]amix=inputs=2:duration=first:dropout_transition=0[out]\" " +
-                              "-map \"[out]\" -ac 1 \"" + mixed + "\"";
-                if (Run(ffmpeg, args)) current = ReplaceIntermediate(current, bookWav, mixed);
+                string filter = $"[1:a]volume={vol.ToString(CultureInfo.InvariantCulture)}[bed];[0:a][bed]amix=inputs=2:duration=first:dropout_transition=0[out]";
+                psi.ArgumentList.Add("-y");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add(current);
+                psi.ArgumentList.Add("-stream_loop");
+                psi.ArgumentList.Add("-1");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add(bed);
+                psi.ArgumentList.Add("-filter_complex");
+                psi.ArgumentList.Add(filter);
+                psi.ArgumentList.Add("-map");
+                psi.ArgumentList.Add("[out]");
+                psi.ArgumentList.Add("-ac");
+                psi.ArgumentList.Add("1");
+                psi.ArgumentList.Add(mixed);
+
+                if (Run(psi, mixed)) current = ReplaceIntermediate(current, bookWav, mixed);
                 else { TryDelete(mixed); }
             }
 
@@ -40,15 +63,33 @@ namespace TTSApp
             if (hasIntro || hasOutro)
             {
                 string joined = NewTemp();
-                var inputs = "";
-                var labels = "";
-                int n = 0;
-                if (hasIntro) { inputs += $"-i \"{intro}\" "; labels += $"[{n}:a]"; n++; }
-                inputs += $"-i \"{current}\" "; labels += $"[{n}:a]"; n++;
-                if (hasOutro) { inputs += $"-i \"{outro}\" "; labels += $"[{n}:a]"; n++; }
+                var psi = new ProcessStartInfo
+                {
+                    FileName = ffmpeg,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
 
-                string args = $"-y {inputs}-filter_complex \"{labels}concat=n={n}:v=0:a=1[out]\" -map \"[out]\" -ac 1 \"{joined}\"";
-                if (Run(ffmpeg, args)) current = ReplaceIntermediate(current, bookWav, joined);
+                int n = 0;
+                if (hasIntro) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(intro!); n++; }
+                psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(current); n++;
+                if (hasOutro) { psi.ArgumentList.Add("-i"); psi.ArgumentList.Add(outro!); n++; }
+
+                var labels = new System.Text.StringBuilder();
+                for (int i = 0; i < n; i++)
+                    labels.Append(CultureInfo.InvariantCulture, $"[{i}:a]");
+                string filter = $"{labels}concat=n={n}:v=0:a=1[out]";
+                psi.ArgumentList.Add("-filter_complex");
+                psi.ArgumentList.Add(filter);
+                psi.ArgumentList.Add("-map");
+                psi.ArgumentList.Add("[out]");
+                psi.ArgumentList.Add("-ac");
+                psi.ArgumentList.Add("1");
+                psi.ArgumentList.Add(joined);
+
+                if (Run(psi, joined)) current = ReplaceIntermediate(current, bookWav, joined);
                 else { TryDelete(joined); }
             }
 
@@ -65,29 +106,32 @@ namespace TTSApp
 
         private static void TryDelete(string p) { try { File.Delete(p); } catch { } }
 
-        private static bool Run(string ffmpeg, string args)
+        private static bool Run(ProcessStartInfo psi, string outputHint)
         {
             try
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = ffmpeg,
-                    Arguments = args,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
                 using var p = Process.Start(psi);
                 if (p == null) return false;
+                var stderr = new System.Text.StringBuilder();
                 p.OutputDataReceived += (_, _) => { };
-                p.ErrorDataReceived += (_, _) => { };
+                p.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data)) stderr.AppendLine(e.Data);
+                };
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
                 if (!p.WaitForExit(300000)) { try { p.Kill(true); } catch { } return false; }
+                if (p.ExitCode != 0)
+                {
+                    Logging.Log.Error($"ffmpeg mix failed (exit {p.ExitCode}) for {outputHint}. Stderr:\n{stderr}");
+                }
                 return p.ExitCode == 0;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                Logging.Log.Error(ex, $"ffmpeg mix failed for {outputHint}");
+                return false;
+            }
         }
     }
 }

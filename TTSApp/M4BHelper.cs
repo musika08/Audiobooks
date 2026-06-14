@@ -34,44 +34,71 @@ namespace TTSApp
             {
                 WriteFfmetadata(metaPath, chapters);
 
-                var args = new StringBuilder();
-                args.Append($"-y -i \"{inputWav}\" -i \"{metaPath}\" ");
-
-                bool hasCover = !string.IsNullOrEmpty(coverImagePath) && File.Exists(coverImagePath);
-                if (hasCover) args.Append($"-i \"{coverImagePath}\" ");
-
-                args.Append("-map_metadata 1 ");
-                args.Append("-map 0:a ");
-                if (hasCover)
-                {
-                    args.Append("-map 2:v ");
-                    args.Append("-c:v copy -disposition:v:0 attached_pic ");
-                }
-                args.Append(audioArgs).Append(' ');
-                args.Append($"\"{output}\"");
-
                 var psi = new ProcessStartInfo
                 {
                     FileName = ffmpeg,
-                    Arguments = args.ToString(),
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
 
+                // Build arguments using ArgumentList so paths with quotes/spaces cannot break out.
+                psi.ArgumentList.Add("-y");
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add(inputWav);
+                psi.ArgumentList.Add("-i");
+                psi.ArgumentList.Add(metaPath);
+
+                bool hasCover = !string.IsNullOrEmpty(coverImagePath) && File.Exists(coverImagePath);
+                if (hasCover)
+                {
+                    psi.ArgumentList.Add("-i");
+                    psi.ArgumentList.Add(coverImagePath!);
+                }
+
+                psi.ArgumentList.Add("-map_metadata");
+                psi.ArgumentList.Add("1");
+                psi.ArgumentList.Add("-map");
+                psi.ArgumentList.Add("0:a");
+                if (hasCover)
+                {
+                    psi.ArgumentList.Add("-map");
+                    psi.ArgumentList.Add("2:v");
+                    psi.ArgumentList.Add("-c:v");
+                    psi.ArgumentList.Add("copy");
+                    psi.ArgumentList.Add("-disposition:v:0");
+                    psi.ArgumentList.Add("attached_pic");
+                }
+
+                foreach (var part in audioArgs.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    psi.ArgumentList.Add(part);
+
+                psi.ArgumentList.Add(output);
+
                 using var proc = Process.Start(psi);
                 if (proc == null) return false;
-                // Drain stdout/stderr so ffmpeg's verbose output can't fill the pipe buffer and deadlock.
+
+                var stderr = new StringBuilder();
                 proc.OutputDataReceived += (_, _) => { };
-                proc.ErrorDataReceived += (_, _) => { };
+                proc.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data)) stderr.AppendLine(e.Data);
+                };
                 proc.BeginOutputReadLine();
                 proc.BeginErrorReadLine();
                 if (!proc.WaitForExit(300000)) // 5 min timeout
                 {
                     try { proc.Kill(true); } catch { /* ignore */ }
+                    Logging.Log.Error($"ffmpeg timed out encoding {output}. Stderr:\n{stderr}");
                     return false;
                 }
+
+                if (proc.ExitCode != 0)
+                {
+                    Logging.Log.Error($"ffmpeg failed (exit {proc.ExitCode}) encoding {output}. Stderr:\n{stderr}");
+                }
+
                 return proc.ExitCode == 0 && File.Exists(output);
             }
             finally
@@ -97,9 +124,9 @@ namespace TTSApp
 
                 sb.AppendLine("[CHAPTER]");
                 sb.AppendLine("TIMEBASE=1/1000");
-                sb.AppendLine($"START={startMs}");
-                sb.AppendLine($"END={endMs}");
-                sb.AppendLine($"title={EscapeMetadata(chapters[i].Title)}");
+                sb.AppendLine("START=" + startMs.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                sb.AppendLine("END=" + endMs.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                sb.AppendLine("title=" + EscapeMetadata(chapters[i].Title));
                 sb.AppendLine();
             }
 

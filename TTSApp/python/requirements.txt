@@ -8,8 +8,10 @@
 # listing it makes pip re-resolve torch and can hang for many minutes).
 # coqui-tts is the maintained fork of the original (discontinued) "TTS" package and
 # supports Python 3.12+. It keeps the same `from TTS.api import TTS` import.
-coqui-tts
-chatterbox-tts
-fastapi
-uvicorn
-numpy
+#
+# Versions pinned as of 2026-06-14. Upgrade only after smoke-testing the sidecar.
+coqui-tts==0.27.5
+chatterbox-tts==0.1.7
+fastapi==0.128.0
+uvicorn==0.49.0
+numpy==1.26.4

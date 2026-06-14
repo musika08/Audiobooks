@@ -6,6 +6,8 @@ Launched by the WPF app:  python tts_server.py --port 8765 --model <id>
 Supported --model ids:
   xtts-v2      Coqui XTTS v2  (built-in speakers + voice cloning)
   chatterbox   Resemble Chatterbox (single default voice + voice cloning)
+  fish-opus    OpenAudio / Fish-Speech (experimental)
+  vibevoice    Microsoft VibeVoice (experimental)
 
 Endpoints:
   GET  /health      -> {"status","device","model"}
@@ -18,6 +20,8 @@ Only one model is loaded at a time; the app restarts this process to switch mode
 import argparse
 import io
 import os
+import re
+import types
 import wave
 
 # Coqui XTTS shows an interactive license [y/n] prompt on first load. We run headless,
@@ -26,11 +30,23 @@ os.environ.setdefault("COQUI_TOS_AGREED", "1")
 
 import numpy as np
 import torch
-from fastapi import FastAPI, Response
-from pydantic import BaseModel
+from fastapi import FastAPI, Response, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 app = FastAPI()
 _engine = None  # set at startup
+
+# Allowed models — keep in sync with PythonSidecarEngine.KnownModels in C#.
+KNOWN_MODELS = {"xtts-v2", "chatterbox", "fish-opus", "vibevoice"}
+
+# Voice-clone references must live under this directory (set by the C# launcher).
+VOICES_DIR = os.path.abspath(os.environ.get("TTSAPP_VOICES_DIR", ""))
+
+# Reasonable safety limits.
+MAX_TEXT_LENGTH = 100_000
+MAX_PAUSE_MS = 4_000
 
 
 # ---------------- engine implementations ----------------
@@ -58,8 +74,9 @@ class XttsEngine:
             temperature=req.temperature,
             repetition_penalty=req.repetition_penalty,
         )
-        if req.speaker_wav and os.path.isfile(req.speaker_wav):
-            kwargs["speaker_wav"] = req.speaker_wav
+        ref = resolve_speaker_wav(req.speaker_wav)
+        if ref:
+            kwargs["speaker_wav"] = ref
         else:
             spk = self.speakers()
             kwargs["speaker"] = req.speaker or (spk[0] if spk else None)
@@ -104,20 +121,18 @@ class ChatterboxEngine:
             cfg_weight=req.cfg_weight,
             temperature=req.temperature,
         )
-        if req.speaker_wav and os.path.isfile(req.speaker_wav):
-            kw["audio_prompt_path"] = req.speaker_wav
+        ref = resolve_speaker_wav(req.speaker_wav)
+        if ref:
+            kw["audio_prompt_path"] = ref
         try:
             wav = self.model.generate(req.text, **kw)
         except TypeError:
             # Older chatterbox signature without tuning kwargs.
-            wav = self.model.generate(
-                req.text,
-                **(
-                    {"audio_prompt_path": req.speaker_wav}
-                    if req.speaker_wav and os.path.isfile(req.speaker_wav)
-                    else {}
-                ),
-            )
+            fallback = {}
+            ref = resolve_speaker_wav(req.speaker_wav)
+            if ref:
+                fallback["audio_prompt_path"] = ref
+            wav = self.model.generate(req.text, **fallback)
         if hasattr(wav, "detach"):
             wav = wav.detach().cpu().numpy()
         return np.asarray(wav).squeeze()
@@ -151,11 +166,7 @@ class FishEngine:
         return ["Default"]
 
     def synth(self, req) -> np.ndarray:
-        ref = (
-            req.speaker_wav
-            if (req.speaker_wav and os.path.isfile(req.speaker_wav))
-            else None
-        )
+        ref = resolve_speaker_wav(req.speaker_wav)
         wav = self.engine.tts(req.text, reference_audio=ref)  # API-dependent
         if hasattr(wav, "detach"):
             wav = wav.detach().cpu().numpy()
@@ -200,12 +211,8 @@ class VibeVoiceEngine:
         return ["Default"]
 
     def synth(self, req) -> np.ndarray:
-        ref = (
-            req.speaker_wav
-            if (req.speaker_wav and os.path.isfile(req.speaker_wav))
-            else None
-        )
-        if ref is None:
+        ref = resolve_speaker_wav(req.speaker_wav)
+        if not ref:
             raise RuntimeError(
                 "VibeVoice needs a reference voice. Click the mic button and pick a clean "
                 "audio clip to clone."
@@ -229,7 +236,19 @@ class VibeVoiceEngine:
         return np.asarray(audio).squeeze()
 
 
-import re as _re
+def resolve_speaker_wav(raw_path: str) -> str | None:
+    """Return a validated absolute path to a voice-clone reference, or None."""
+    if not raw_path:
+        return None
+    abs_path = os.path.abspath(raw_path)
+    if not os.path.isfile(abs_path):
+        return None
+    if VOICES_DIR and not abs_path.startswith(VOICES_DIR + os.sep):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Clone reference must be inside the voices directory ({VOICES_DIR}).",
+        )
+    return abs_path
 
 
 def normalize_text(t: str) -> str:
@@ -237,9 +256,9 @@ def normalize_text(t: str) -> str:
     if not t:
         return t
     t = t.replace("…", ".")
-    t = _re.sub(r"\.{2,}", ".", t)
-    t = _re.sub(r"\s*([,.;:!?])\1+", r"\1", t)
-    t = _re.sub(r"[ \t]+", " ", t)
+    t = re.sub(r"\.{2,}", ".", t)
+    t = re.sub(r"\s*([,.;:!?])\1+", r"\1", t)
+    t = re.sub(r"[ \t]+", " ", t)
     return t.strip()
 
 
@@ -249,9 +268,9 @@ def segment_with_pauses(text, p_comma, p_sentence, p_ellipsis, p_paragraph):
     become pure silence. Only breaks where the relevant pause > 0 (fewer model calls)."""
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n").replace("…", "...")
     out = []
-    paras = _re.split(r"\n[ \t]*\n+", text)
+    paras = re.split(r"\n[ \t]*\n+", text)
     for pidx, para in enumerate(paras):
-        para = _re.sub(r"[ \t]*\n[ \t]*", " ", para).strip()
+        para = re.sub(r"[ \t]*\n[ \t]*", " ", para).strip()
         if not para:
             continue
 
@@ -295,36 +314,47 @@ def segment_with_pauses(text, p_comma, p_sentence, p_ellipsis, p_paragraph):
 
 
 def build_engine(model_id: str):
+    if model_id not in KNOWN_MODELS:
+        raise ValueError(
+            f"Unknown model '{model_id}'. Supported models: {', '.join(sorted(KNOWN_MODELS))}"
+        )
     if model_id == "chatterbox":
         return ChatterboxEngine()
     if model_id == "fish-opus":
         return FishEngine()
     if model_id == "vibevoice":
         return VibeVoiceEngine()
-    return XttsEngine()  # default
+    return XttsEngine()
 
 
 # ---------------- HTTP ----------------
 
 
 class SynthRequest(BaseModel):
-    text: str
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
+
+
+def _request_with_text(req: SynthRequest, text: str):
+    """Return a shallow copy of the request with a new text value."""
+    data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    data["text"] = text
+    return types.SimpleNamespace(**data)
     speaker: str = ""
     speaker_wav: str = ""  # reference audio path for cloning (overrides speaker)
-    speed: float = 1.0
+    speed: float = Field(1.0, ge=0.5, le=2.0)
     language: str = "en"
     denoise: bool = False  # run a de-reverb/denoise pass on the output (DeepFilterNet)
     # Voice tuning (each engine uses the relevant ones).
-    temperature: float = 0.7
-    repetition_penalty: float = 2.0
-    exaggeration: float = 0.5
-    cfg_weight: float = 0.5
-    cfg_scale: float = 1.3
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
+    repetition_penalty: float = Field(2.0, ge=1.0, le=10.0)
+    exaggeration: float = Field(0.5, ge=0.0, le=2.0)
+    cfg_weight: float = Field(0.5, ge=0.0, le=2.0)
+    cfg_scale: float = Field(1.3, ge=1.0, le=5.0)
     # Pause durations (ms) inserted after punctuation (0 = no break there).
-    pause_comma: int = 0
-    pause_sentence: int = 0
-    pause_ellipsis: int = 300
-    pause_paragraph: int = 0
+    pause_comma: int = Field(0, ge=0, le=MAX_PAUSE_MS)
+    pause_sentence: int = Field(0, ge=0, le=MAX_PAUSE_MS)
+    pause_ellipsis: int = Field(300, ge=0, le=MAX_PAUSE_MS)
+    pause_paragraph: int = Field(0, ge=0, le=MAX_PAUSE_MS)
 
 
 # Lazy DeepFilterNet state (loaded only when denoise is first requested).
@@ -371,6 +401,21 @@ def to_wav_bytes(samples: np.ndarray, sr: int) -> bytes:
     return buf.getvalue()
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(_, exc: RequestValidationError):
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(_, exc: Exception):
+    # Log the real error server-side, return a sanitized message to the client.
+    print(f"Synthesis error: {exc}", flush=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Synthesis failed: {type(exc).__name__}"},
+    )
+
+
 @app.get("/health")
 def health():
     return {
@@ -382,11 +427,16 @@ def health():
 
 @app.get("/speakers")
 def speakers():
+    if _engine is None:
+        raise HTTPException(status_code=503, detail="Engine not loaded yet")
     return {"speakers": _engine.speakers()}
 
 
 @app.post("/synthesize")
 def synthesize(req: SynthRequest):
+    if _engine is None:
+        raise HTTPException(status_code=503, detail="Engine not loaded yet")
+
     sr = _engine.sr
 
     # Pace punctuation: speak each segment (with its punctuation for intonation), then
@@ -401,12 +451,12 @@ def synthesize(req: SynthRequest):
     chunks = []
     for seg, pause_ms in pieces:
         seg = normalize_text(seg)
-        if seg and _re.search(r"[A-Za-z0-9]", seg):
-            req.text = seg
-            chunks.append(np.asarray(_engine.synth(req), dtype=np.float32).squeeze())
+        if seg and re.search(r"[A-Za-z0-9]", seg):
+            # Do not mutate the incoming request object; build a local kwargs-only stand-in.
+            chunks.append(np.asarray(_engine.synth(_request_with_text(req, seg)), dtype=np.float32).squeeze())
         if pause_ms > 0:
             chunks.append(
-                np.zeros(int(sr * min(pause_ms, 4000) / 1000.0), dtype=np.float32)
+                np.zeros(int(sr * min(pause_ms, MAX_PAUSE_MS) / 1000.0), dtype=np.float32)
             )
 
     samples = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)

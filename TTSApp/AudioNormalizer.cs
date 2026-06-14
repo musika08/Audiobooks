@@ -295,6 +295,50 @@ namespace TTSApp
             File.Move(tempPath, wavPath, overwrite: true);
         }
 
+        /// <summary>
+        /// Apply a short linear fade-in at the start and fade-out at the end of a WAV so that
+        /// each rendered chunk begins and ends at zero amplitude. Without this, raw concatenation
+        /// of chunks produces an audible click/pop at every boundary (i.e. after every punctuation
+        /// mark, where a new chunk starts). 16-bit mono only.
+        /// </summary>
+        public static void ApplyEdgeFades(string wavPath, int fadeMs = 6)
+        {
+            if (!File.Exists(wavPath)) return;
+
+            float[] samples;
+            int sampleRate;
+            using (var reader = new WaveFileReader(wavPath))
+            {
+                sampleRate = reader.WaveFormat.SampleRate;
+                samples = ReadAllMono(reader);
+            }
+            if (samples.Length == 0) return;
+
+            int fade = (int)(sampleRate * (fadeMs / 1000.0));
+            // Don't fade more than half the clip from each end.
+            fade = Math.Min(fade, samples.Length / 2);
+            if (fade <= 0) return;
+
+            for (int i = 0; i < fade; i++)
+            {
+                float g = (float)(i + 1) / (fade + 1);
+                samples[i] *= g;
+                samples[samples.Length - 1 - i] *= g;
+            }
+
+            string tempPath = Path.Combine(Path.GetTempPath(), $"fade_{Guid.NewGuid()}.wav");
+            using (var writer = new WaveFileWriter(tempPath, new WaveFormat(sampleRate, 16, 1)))
+            {
+                foreach (var f in samples)
+                {
+                    short s = (short)Math.Clamp((int)(f * 32767f), short.MinValue, short.MaxValue);
+                    writer.WriteByte((byte)(s & 0xFF));
+                    writer.WriteByte((byte)((s >> 8) & 0xFF));
+                }
+            }
+            File.Move(tempPath, wavPath, overwrite: true);
+        }
+
         private static void AccumulateStats(byte[] buffer, int bytesRead, WaveFormat format,
             ref double sumSquares, ref long sampleCount, ref float maxPeak)
         {

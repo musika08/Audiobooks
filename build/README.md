@@ -9,13 +9,13 @@ Produces `.\publish\` — a folder with `TTSApp.exe` and everything it needs (no
 The folder includes `Models\` (Kokoro voices) and `python\` (GPU sidecar). GPU engines add `python\.venv`, `python\runtime`, and `python\cache` on first use — those stay inside the app folder (portable).
 
 ## Installer (.exe)
-1. Run `publish.ps1` (above) first.
+1. Run `publish.ps1` (above) first. It prints the exact `iscc` command with the current version.
 2. Install [Inno Setup](https://jrsoftware.org/isinfo.php).
-3. Compile:
+3. Compile (replace `{version}` with the version from `publish.ps1`):
    ```powershell
-   iscc build\installer.iss
+   iscc build\installer.iss /DAppVersion={version}
    ```
-   Output: `build\Output\TTSApp-Setup-1.0.0.exe`.
+   Output: `build\Output\TTSApp-Setup-{version}.exe`.
 
 ## Notes
 - GPU engines (XTTS / Chatterbox / Fish) need a base Python 3.10+ on the machine, or the app downloads a private one automatically on first use.

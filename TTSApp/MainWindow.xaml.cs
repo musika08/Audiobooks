@@ -13,6 +13,7 @@ using System.Windows.Threading;
 using System.Text.RegularExpressions;
 using NAudio.Lame;
 using NAudio.Wave;
+using TTSApp.Services;
 
 namespace TTSApp
 {
@@ -34,9 +35,7 @@ namespace TTSApp
         private const int MaxRecentFiles = 10;
 
         // Audio player
-        private WaveOutEvent? _waveOut;
-        private WaveFileReader? _waveReader;
-        private DispatcherTimer? _playbackTimer;
+        private readonly AudioPlayerService _audioPlayer = new AudioPlayerService();
         private string? _currentPreviewFile;
 
         // Auto-save
@@ -54,6 +53,11 @@ namespace TTSApp
 
         // Set while a conversion is running; re-clicking Convert cancels it.
         private CancellationTokenSource? _convertCts;
+        private Task? _convertTask;
+
+        // Set while a preview is generating.
+        private CancellationTokenSource? _previewCts;
+        private Task? _previewTask;
 
         // #5 — chapter drag-reorder state.
         private Point _dragStartPoint;
@@ -63,6 +67,8 @@ namespace TTSApp
         {
             InitializeComponent();
             Loaded += MainWindow_Loaded;
+            _audioPlayer.StateChanged += AudioPlayer_StateChanged;
+            _audioPlayer.PositionChanged += AudioPlayer_PositionChanged;
         }
 
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -119,7 +125,7 @@ namespace TTSApp
             // Never auto-launch a GPU sidecar engine on startup (slow, may download GB). Boot on Kokoro;
             // the user re-picks a GPU engine when they want it. This also avoids a dropdown/engine mismatch
             // where the saved sidecar selection would leave the engine uninitialized.
-            if (IsSidecarModel(AppSettings.SelectedModel))
+            if (TtsEngineFactory.IsSidecarModel(AppSettings.SelectedModel))
             {
                 AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                 AppSettings.Save();
@@ -204,7 +210,7 @@ namespace TTSApp
             bool hasGpu = HasNvidiaGpu();
             foreach (var obj in CmbModel.Items)
             {
-                if (obj is ComboBoxItem ci && ci.Tag?.ToString() is string tag && IsSidecarModel(tag))
+                if (obj is ComboBoxItem ci && ci.Tag?.ToString() is string tag && TtsEngineFactory.IsSidecarModel(tag))
                 {
                     ci.IsEnabled = hasGpu;
                     if (!hasGpu && !ci.Content.ToString()!.Contains("no GPU"))
@@ -415,12 +421,25 @@ namespace TTSApp
                 ch.VoiceOverride = CmbChapterVoice.SelectedIndex - 1;
         }
 
-        // GPU-only engines run through the Python sidecar; everything else is in-process Kokoro.
-        private static bool IsSidecarModel(string modelName) =>
-            modelName is "xtts-v2" or "chatterbox" or "vibevoice";
+        /// <summary>
+        /// Cancels any running preview/conversion and waits for them to finish before
+        /// the caller disposes the engine. Prevents use-after-dispose crashes.
+        /// </summary>
+        private async Task AwaitRunningOperationsAsync()
+        {
+            _previewCts?.Cancel();
+            _convertCts?.Cancel();
 
-        private static ITtsEngine CreateEngine(string modelName) =>
-            IsSidecarModel(modelName) ? new PythonSidecarEngine(modelName) : new TtsEngine(modelName);
+            var tasks = new List<Task>();
+            if (_previewTask != null) tasks.Add(_previewTask);
+            if (_convertTask != null) tasks.Add(_convertTask);
+            if (tasks.Count > 0)
+            {
+                try { await Task.WhenAll(tasks).ConfigureAwait(true); }
+                catch (OperationCanceledException) { /* expected */ }
+                catch (Exception ex) { Logging.Log.Error(ex, "Error waiting for running operations"); }
+            }
+        }
 
         // Build narrator/dialogue engine instances for Voice Cast, deduping by model (so XTTS+XTTS
         // shares one sidecar) and reusing the already-initialized main engine when its model matches.
@@ -436,8 +455,8 @@ namespace TTSApp
                     eng = _ttsEngine;
                 else
                 {
-                    eng = CreateEngine(model);
-                    eng.Initialize(IsSidecarModel(model) ? "cuda" : "cpu");
+                    eng = TtsEngineFactory.CreateEngine(model);
+                    eng.Initialize(TtsEngineFactory.ProviderFor(model, providerIndex: 1));
                     owned.Add(eng);
                 }
                 cache[model] = eng;
@@ -567,16 +586,17 @@ namespace TTSApp
             AppSettings.SelectedModel = newModel;
             AppSettings.Save();
 
+            await AwaitRunningOperationsAsync();
             _ttsEngine.Dispose();
-            _ttsEngine = CreateEngine(newModel);
+            _ttsEngine = TtsEngineFactory.CreateEngine(newModel);
 
             // Voice cloning only applies to GPU sidecar engines; reset it on every model switch.
             AppSettings.CloneReferencePath = null;
             ResetCloneButton();
-            BtnCloneVoice.IsEnabled = IsSidecarModel(newModel);
+            BtnCloneVoice.IsEnabled = TtsEngineFactory.IsSidecarModel(newModel);
 
             // GPU sidecar engine: start server off the UI thread, then fill the voice list.
-            if (IsSidecarModel(newModel))
+            if (TtsEngineFactory.IsSidecarModel(newModel))
             {
                 string label = (item.Content?.ToString() ?? newModel);
 
@@ -595,6 +615,7 @@ namespace TTSApp
                     {
                         AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                         AppSettings.Save();
+                        await AwaitRunningOperationsAsync();
                         _ttsEngine.Dispose();
                         _ttsEngine = new TtsEngine();
                         InitializeTts("cpu");
@@ -636,6 +657,7 @@ namespace TTSApp
 
                     AppSettings.SelectedModel = "kokoro-multi-lang-v1_0";
                     AppSettings.Save();
+                    await AwaitRunningOperationsAsync();
                     _ttsEngine.Dispose();
                     _ttsEngine = new TtsEngine();
                     InitializeTts("cpu");
@@ -966,7 +988,7 @@ namespace TTSApp
 
         private void MenuVoiceTuning_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsSidecarModel(AppSettings.SelectedModel))
+            if (!TtsEngineFactory.IsSidecarModel(AppSettings.SelectedModel))
             {
                 MessageBox.Show("Voice tuning applies to the GPU engines (XTTS, Chatterbox, VibeVoice). Select one first.",
                     "Voice Tuning", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1280,73 +1302,40 @@ namespace TTSApp
         {
             StopPlayback();
             _currentPreviewFile = filePath;
-            _waveReader = new WaveFileReader(filePath);
-            _waveOut = new WaveOutEvent();
-            _waveOut.Init(_waveReader);
-            _waveOut.PlaybackStopped += WaveOut_PlaybackStopped;
+            _audioPlayer.Play(filePath);
 
-            SliderSeek.Maximum = _waveReader.TotalTime.TotalSeconds;
+            SliderSeek.Maximum = _audioPlayer.TotalTime.TotalSeconds;
             SliderSeek.Value = 0;
-            BtnPlayPause.Content = "⏸";
-
-            _playbackTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-            _playbackTimer.Tick += PlaybackTimer_Tick;
-            _playbackTimer.Start();
+            BtnPlayPause.Content = _audioPlayer.IsPlaying ? "⏸" : "▶";
 
             DrawWaveform(filePath);
-            _waveOut.Play();
         }
 
-        private void PlaybackTimer_Tick(object? sender, EventArgs e)
+        private void AudioPlayer_StateChanged(object? sender, EventArgs e)
         {
-            if (_waveReader != null && _waveOut != null)
+            BtnPlayPause.Content = _audioPlayer.IsPlaying ? "⏸" : "▶";
+            if (!_audioPlayer.IsPlaying && !_audioPlayer.HasMedia)
             {
-                SliderSeek.Value = _waveReader.CurrentTime.TotalSeconds;
-                LblTime.Text = $"{_waveReader.CurrentTime.Minutes:D2}:{_waveReader.CurrentTime.Seconds:D2} / {_waveReader.TotalTime.Minutes:D2}:{_waveReader.TotalTime.Seconds:D2}";
-                string title = ChaptersList.SelectedItem is ChapterItem ch ? ch.Title : "Preview";
-                SyncMiniPlayerState(_waveOut.PlaybackState == PlaybackState.Playing, title, _waveReader.CurrentTime, _waveReader.TotalTime);
+                SliderSeek.Value = 0;
+                LblTime.Text = "0:00 / 0:00";
             }
         }
 
-        private void WaveOut_PlaybackStopped(object? sender, StoppedEventArgs e)
+        private void AudioPlayer_PositionChanged(object? sender, EventArgs e)
         {
-            Dispatcher.Invoke(() =>
-            {
-                BtnPlayPause.Content = "▶";
-                _playbackTimer?.Stop();
-                if (_waveReader != null)
-                {
-                    SliderSeek.Value = _waveReader.CurrentTime.TotalSeconds;
-                    LblTime.Text = $"{_waveReader.CurrentTime.Minutes:D2}:{_waveReader.CurrentTime.Seconds:D2} / {_waveReader.TotalTime.Minutes:D2}:{_waveReader.TotalTime.Seconds:D2}";
-                }
-            });
+            SliderSeek.Value = _audioPlayer.CurrentTime.TotalSeconds;
+            LblTime.Text = $"{_audioPlayer.CurrentTime.Minutes:D2}:{_audioPlayer.CurrentTime.Seconds:D2} / {_audioPlayer.TotalTime.Minutes:D2}:{_audioPlayer.TotalTime.Seconds:D2}";
+            string title = ChaptersList.SelectedItem is ChapterItem ch ? ch.Title : "Preview";
+            SyncMiniPlayerState(_audioPlayer.IsPlaying, title, _audioPlayer.CurrentTime, _audioPlayer.TotalTime);
         }
 
-        private void BtnPlayPause_Click(object sender, RoutedEventArgs e)
-        {
-            if (_waveOut == null) return;
-            if (_waveOut.PlaybackState == PlaybackState.Playing)
-            {
-                _waveOut.Pause();
-                BtnPlayPause.Content = "▶";
-            }
-            else
-            {
-                _waveOut.Play();
-                BtnPlayPause.Content = "⏸";
-            }
-        }
+        private void BtnPlayPause_Click(object sender, RoutedEventArgs e) => _audioPlayer.Toggle();
 
         private void BtnStop_Click(object sender, RoutedEventArgs e) => StopPlayback();
 
         private void StopPlayback()
         {
-            _playbackTimer?.Stop();
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
-            _waveReader?.Dispose();
-            _waveOut = null;
-            _waveReader = null;
+            _audioPlayer.Stop();
             BtnPlayPause.Content = "▶";
             SliderSeek.Value = 0;
             LblTime.Text = "0:00 / 0:00";
@@ -1359,26 +1348,20 @@ namespace TTSApp
 
         private void BtnRewind_Click(object sender, RoutedEventArgs e)
         {
-            if (_waveReader == null) return;
-            var newTime = _waveReader.CurrentTime - TimeSpan.FromSeconds(AppSettings.RewindSeconds);
-            _waveReader.CurrentTime = newTime < TimeSpan.Zero ? TimeSpan.Zero : newTime;
-            SliderSeek.Value = _waveReader.CurrentTime.TotalSeconds;
+            if (!_audioPlayer.HasMedia) return;
+            _audioPlayer.Seek(_audioPlayer.CurrentTime - TimeSpan.FromSeconds(AppSettings.RewindSeconds));
         }
 
         private void BtnForward_Click(object sender, RoutedEventArgs e)
         {
-            if (_waveReader == null) return;
-            var newTime = _waveReader.CurrentTime + TimeSpan.FromSeconds(AppSettings.ForwardSeconds);
-            _waveReader.CurrentTime = newTime > _waveReader.TotalTime ? _waveReader.TotalTime : newTime;
-            SliderSeek.Value = _waveReader.CurrentTime.TotalSeconds;
+            if (!_audioPlayer.HasMedia) return;
+            _audioPlayer.Seek(_audioPlayer.CurrentTime + TimeSpan.FromSeconds(AppSettings.ForwardSeconds));
         }
 
         private void SliderSeek_DragCompleted(object sender, DragCompletedEventArgs e)
         {
-            if (_waveReader != null)
-            {
-                _waveReader.CurrentTime = TimeSpan.FromSeconds(SliderSeek.Value);
-            }
+            if (_audioPlayer.HasMedia)
+                _audioPlayer.Seek(TimeSpan.FromSeconds(SliderSeek.Value));
         }
 
         internal void MiniRewind() => BtnRewind_Click(this, new RoutedEventArgs());
@@ -1387,9 +1370,9 @@ namespace TTSApp
         internal void MiniPlayPause() => BtnPlayPause_Click(this, new RoutedEventArgs());
         internal void MiniSeek(double seconds)
         {
-            if (_waveReader != null)
+            if (_audioPlayer.HasMedia)
             {
-                _waveReader.CurrentTime = TimeSpan.FromSeconds(seconds);
+                _audioPlayer.Seek(TimeSpan.FromSeconds(seconds));
                 SliderSeek.Value = seconds;
             }
         }
@@ -1425,7 +1408,11 @@ namespace TTSApp
             BtnConvert.IsEnabled = false;
             TxtStatus.Text = "Generating preview...";
 
-            await Task.Run(() =>
+            _previewCts?.Dispose();
+            _previewCts = new CancellationTokenSource();
+            var token = _previewCts.Token;
+
+            _previewTask = Task.Run(async () =>
             {
                 var castOwned = new List<ITtsEngine>();
                 try
@@ -1434,11 +1421,11 @@ namespace TTSApp
                     {
                         Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
                         var (n, d) = BuildCastRoles(castOwned);
-                        VoiceCast.Render(textToPreview, speed, tempFile, n, d);
+                        await VoiceCast.RenderAsync(textToPreview, speed, tempFile, n, d, token).ConfigureAwait(false);
                     }
                     else
                     {
-                        _ttsEngine.Generate(textToPreview, speakerId, speed, tempFile);
+                        await _ttsEngine.GenerateAsync(textToPreview, speakerId, speed, tempFile, token).ConfigureAwait(false);
                     }
                     Dispatcher.Invoke(() =>
                     {
@@ -1446,8 +1433,13 @@ namespace TTSApp
                         StartPlayback(tempFile);
                     });
                 }
+                catch (OperationCanceledException)
+                {
+                    Dispatcher.Invoke(() => TxtStatus.Text = "Preview cancelled.");
+                }
                 catch (Exception ex)
                 {
+                    Logging.Log.Error(ex, "Preview generation failed");
                     Dispatcher.Invoke(() =>
                     {
                         MessageBox.Show($"Preview failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -1455,15 +1447,19 @@ namespace TTSApp
                 }
                 finally
                 {
-                    foreach (var ce in castOwned) { try { ce.Dispose(); } catch { } }
+                    foreach (var ce in castOwned) { try { ce.Dispose(); } catch (Exception ex) { Logging.Log.Error(ex, "Failed to dispose Voice Cast engine"); } }
                     Dispatcher.Invoke(() =>
                     {
                         BtnPreview.IsEnabled = true;
                         BtnConvert.IsEnabled = true;
-                        TxtStatus.Text = "Ready";
+                        if (TxtStatus.Text == "Generating preview...") TxtStatus.Text = "Ready";
                     });
                 }
-            });
+            }, token);
+
+            try { await _previewTask; }
+            catch (OperationCanceledException) { /* handled inside */ }
+            finally { _previewTask = null; }
         }
 
         private void BtnSelectAll_Click(object sender, RoutedEventArgs e)
@@ -1535,7 +1531,7 @@ namespace TTSApp
             }
 
             // Dialog (dual-voice) mode is implemented for Kokoro only; GPU engines use a single voice.
-            if (AppSettings.EnableDialogMode && IsSidecarModel(AppSettings.SelectedModel))
+            if (AppSettings.EnableDialogMode && TtsEngineFactory.IsSidecarModel(AppSettings.SelectedModel))
             {
                 MessageBox.Show(
                     "Dual-voice (dialog) mode works only with the Kokoro engines.\n\n" +
@@ -1574,13 +1570,14 @@ namespace TTSApp
             };
 
             // The CPU/CUDA/DirectML selector only applies to in-process Kokoro; the sidecar manages its own device.
-            if (!IsSidecarModel(AppSettings.SelectedModel) &&
+            if (!TtsEngineFactory.IsSidecarModel(AppSettings.SelectedModel) &&
                 (!_ttsEngine.IsInitialized || _ttsEngine.CurrentProvider != provider))
             {
                 try
                 {
+                    await AwaitRunningOperationsAsync();
                     _ttsEngine.Dispose();
-                    _ttsEngine = CreateEngine(AppSettings.SelectedModel);
+                    _ttsEngine = TtsEngineFactory.CreateEngine(AppSettings.SelectedModel);
                     InitializeTts(provider);
                 }
                 catch (Exception ex)
@@ -1670,7 +1667,7 @@ namespace TTSApp
 
             try
             {
-            await Task.Run(() =>
+            _convertTask = Task.Run(async () =>
             {
                 if (AppSettings.CastEnabled)
                 {
@@ -1734,9 +1731,9 @@ namespace TTSApp
                         // #19 — use the chapter's voice override if set, else the global voice.
                         int chapterVoice = chapter.VoiceOverride >= 0 ? chapter.VoiceOverride : speakerId;
                         if (castNarrator != null && castDialogue != null)
-                            VoiceCast.Render(text, speed, outputFile, castNarrator, castDialogue, token);
+                            await VoiceCast.RenderAsync(text, speed, outputFile, castNarrator, castDialogue, token).ConfigureAwait(false);
                         else
-                            _ttsEngine.Generate(text, chapterVoice, speed, outputFile);
+                            await _ttsEngine.GenerateAsync(text, chapterVoice, speed, outputFile, token).ConfigureAwait(false);
 
                         if (token.IsCancellationRequested) break;
 
@@ -1827,7 +1824,9 @@ namespace TTSApp
                         try { File.Delete(w); } catch { }
                     }
                 }
-            });
+            }, token);
+
+            await _convertTask;
 
                 if (token.IsCancellationRequested)
                 {
@@ -1864,6 +1863,7 @@ namespace TTSApp
                 }
                 _convertCts?.Dispose();
                 _convertCts = null;
+                _convertTask = null;
                 LblConvert.Text = "Convert";
                 SetBusy(false, "Ready");
                 BtnBrowse.IsEnabled = true;
@@ -1990,6 +1990,7 @@ namespace TTSApp
             AppSettings.Save();
             _miniPlayer?.Close();
             StopPlayback();
+            _audioPlayer.Dispose();
             base.OnClosing(e);
         }
 
@@ -2196,71 +2197,36 @@ namespace TTSApp
             WaveformCanvas.Children.Clear();
             if (!File.Exists(wavPath)) return;
 
-            try
+            int width = (int)WaveformCanvas.ActualWidth;
+            if (width <= 0) width = 400;
+            int height = (int)WaveformCanvas.ActualHeight;
+            if (height <= 0) height = 40;
+
+            // Compute the waveform on a background thread; only create UI elements on the dispatcher.
+            _ = Task.Run(() =>
             {
-                using var reader = new WaveFileReader(wavPath);
-                int sampleRate = reader.WaveFormat.SampleRate;
-                int channels = reader.WaveFormat.Channels;
-                int bytesPerSample = reader.WaveFormat.BitsPerSample / 8;
-                long totalSamples = reader.Length / (channels * bytesPerSample);
-                int width = (int)WaveformCanvas.ActualWidth;
-                if (width <= 0) width = 400;
-                int height = (int)WaveformCanvas.ActualHeight;
-                if (height <= 0) height = 40;
-
-                int samplesPerPixel = Math.Max(1, (int)(totalSamples / width));
-                var buffer = new byte[reader.WaveFormat.BlockAlign * samplesPerPixel];
-                var polyline = new System.Windows.Shapes.Polyline
+                try
                 {
-                    Stroke = System.Windows.Media.Brushes.Gray,
-                    StrokeThickness = 1,
-                    Opacity = 0.6
-                };
-
-                double midY = height / 2.0;
-                for (int x = 0; x < width; x++)
-                {
-                    int bytesRead = reader.Read(buffer, 0, buffer.Length);
-                    if (bytesRead == 0) break;
-
-                    float peak = 0f;
-                    if (bytesPerSample == 2)
+                    var points = WaveformRenderer.Render(wavPath, width, height);
+                    Dispatcher.Invoke(() =>
                     {
-                        for (int i = 0; i < bytesRead; i += 2 * channels)
+                        foreach (var polyline in points)
                         {
-                            short s = (short)(buffer[i] | (buffer[i + 1] << 8));
-                            peak = Math.Max(peak, Math.Abs(s / 32768f));
+                            WaveformCanvas.Children.Add(new System.Windows.Shapes.Polyline
+                            {
+                                Stroke = System.Windows.Media.Brushes.Gray,
+                                StrokeThickness = 1,
+                                Opacity = 0.6,
+                                Points = new System.Windows.Media.PointCollection(polyline)
+                            });
                         }
-                    }
-                    else if (bytesPerSample == 4 && reader.WaveFormat.Encoding == WaveFormatEncoding.IeeeFloat)
-                    {
-                        for (int i = 0; i < bytesRead; i += 4 * channels)
-                        {
-                            float s = BitConverter.ToSingle(buffer, i);
-                            peak = Math.Max(peak, Math.Abs(s));
-                        }
-                    }
-
-                    double y = midY - (peak * midY);
-                    polyline.Points.Add(new System.Windows.Point(x, y));
+                    });
                 }
-
-                WaveformCanvas.Children.Add(polyline);
-
-                // Mirror bottom half
-                var bottomPoly = new System.Windows.Shapes.Polyline
+                catch (Exception ex)
                 {
-                    Stroke = System.Windows.Media.Brushes.Gray,
-                    StrokeThickness = 1,
-                    Opacity = 0.6
-                };
-                foreach (var pt in polyline.Points)
-                {
-                    bottomPoly.Points.Add(new System.Windows.Point(pt.X, midY + (midY - pt.Y)));
+                    Logging.Log.Error(ex, $"Failed to render waveform for {wavPath}");
                 }
-                WaveformCanvas.Children.Add(bottomPoly);
-            }
-            catch { /* ignore waveform errors */ }
+            });
         }
         #endregion
 
@@ -2272,15 +2238,29 @@ namespace TTSApp
             await ImportUrlAsChapterAsync(input);
         }
 
+        private static readonly System.Net.Http.HttpClient UrlImportClient = new()
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+            MaxResponseContentBufferSize = 10 * 1024 * 1024 // 10 MB
+        };
+
         private async System.Threading.Tasks.Task<bool> ImportUrlAsChapterAsync(string input)
         {
             SetBusy(true, "Fetching...");
             try
             {
-                using var client = new System.Net.Http.HttpClient();
-                client.Timeout = TimeSpan.FromSeconds(30);
-                client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                var html = await client.GetStringAsync(input);
+                if (!System.Uri.TryCreate(input, System.UriKind.Absolute, out var uri) ||
+                    !(uri.Scheme.Equals("http", System.StringComparison.OrdinalIgnoreCase) ||
+                      uri.Scheme.Equals("https", System.StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new ArgumentException("Only http:// and https:// URLs are supported.");
+                }
+
+                using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, uri);
+                request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                using var response = await UrlImportClient.SendAsync(request);
+                response.EnsureSuccessStatusCode();
+                var html = await response.Content.ReadAsStringAsync();
 
                 // Find the "next chapter" link from the raw HTML before we strip navigation.
                 string? nextUrl = ExtractNextLink(html, input);
@@ -2349,6 +2329,7 @@ namespace TTSApp
             }
             catch (Exception ex)
             {
+                Logging.Log.Error(ex, $"Failed to fetch URL: {input}");
                 MessageBox.Show($"Failed to fetch URL:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
