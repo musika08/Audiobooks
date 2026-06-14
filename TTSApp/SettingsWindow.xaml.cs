@@ -22,6 +22,18 @@ namespace TTSApp
             TxtForward.Text = AppSettings.ForwardSeconds.ToString();
             ChkAnnounce.IsChecked = AppSettings.AnnounceChapterTitle;
             ChkLevelVolume.IsChecked = AppSettings.LevelSegmentVolume;
+
+            ChkAiEnabled.IsChecked = AppSettings.AiEnabled;
+            CmbAiProvider.SelectedItem = CmbAiProvider.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(i => (i.Tag?.ToString() ?? "") == AppSettings.AiProvider) ?? CmbAiProvider.Items[0];
+            TxtAiKey.Password = AppSettings.AiApiKey;
+            TxtAiModel.Text = AppSettings.AiModel;
+            TxtAiBaseUrl.Text = AppSettings.AiBaseUrl;
+            ChkAiNormalize.IsChecked = AppSettings.AiNormalize;
+            ChkAiSkipJunk.IsChecked = AppSettings.AiSkipJunk;
+            ChkAiHeteronyms.IsChecked = AppSettings.AiHeteronyms;
+            ChkAiEmphasis.IsChecked = AppSettings.AiEmphasis;
+            UpdateAiProviderFields();
             ChkDereverb.IsChecked = AppSettings.DereverbCloned;
             ChkMerge.IsChecked = AppSettings.MergeIntoSingleFile;
             CmbNormMode.SelectedIndex = AppSettings.NormalizationMode;
@@ -51,6 +63,26 @@ namespace TTSApp
                 System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
+        private void CmbAiProvider_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded) return;
+            string provider = (CmbAiProvider.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ollama";
+            // Suggest a sensible default model for the picked provider if the box is empty/mismatched.
+            string m = TxtAiModel.Text.Trim();
+            if (provider == "ollama" && (m.Length == 0 || m.Contains("deepseek"))) TxtAiModel.Text = "qwen2.5:7b";
+            else if (provider == "deepseek" && (m.Length == 0 || m.Contains("qwen") || m.Contains(":"))) TxtAiModel.Text = "deepseek-v4-flash";
+            UpdateAiProviderFields();
+        }
+
+        // Local Ollama shows a Server URL and hides the API-key box; cloud providers do the reverse.
+        private void UpdateAiProviderFields()
+        {
+            string provider = (CmbAiProvider.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ollama";
+            bool local = provider == "ollama";
+            PanelAiBaseUrl.Visibility = local ? Visibility.Visible : Visibility.Collapsed;
+            PanelAiKey.Visibility = local ? Visibility.Collapsed : Visibility.Visible;
+        }
+
         private void BtnSave_Click(object sender, RoutedEventArgs e)
         {
             if (int.TryParse(TxtRewind.Text, out int rewind) && rewind > 0)
@@ -69,6 +101,16 @@ namespace TTSApp
 
             AppSettings.AnnounceChapterTitle = ChkAnnounce.IsChecked == true;
             AppSettings.LevelSegmentVolume = ChkLevelVolume.IsChecked == true;
+
+            AppSettings.AiEnabled = ChkAiEnabled.IsChecked == true;
+            AppSettings.AiProvider = (CmbAiProvider.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "ollama";
+            AppSettings.AiApiKey = TxtAiKey.Password;
+            AppSettings.AiModel = TxtAiModel.Text.Trim();
+            AppSettings.AiBaseUrl = string.IsNullOrWhiteSpace(TxtAiBaseUrl.Text) ? "http://localhost:11434" : TxtAiBaseUrl.Text.Trim();
+            AppSettings.AiNormalize = ChkAiNormalize.IsChecked == true;
+            AppSettings.AiSkipJunk = ChkAiSkipJunk.IsChecked == true;
+            AppSettings.AiHeteronyms = ChkAiHeteronyms.IsChecked == true;
+            AppSettings.AiEmphasis = ChkAiEmphasis.IsChecked == true;
             AppSettings.DereverbCloned = ChkDereverb.IsChecked == true;
             AppSettings.MergeIntoSingleFile = ChkMerge.IsChecked == true;
             AppSettings.NormalizationMode = CmbNormMode.SelectedIndex < 0 ? 0 : CmbNormMode.SelectedIndex;

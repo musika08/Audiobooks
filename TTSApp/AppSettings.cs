@@ -8,7 +8,7 @@ namespace TTSApp
 {
     public static class AppSettings
     {
-        private static readonly string SettingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TTSApp");
+        internal static readonly string SettingsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TTSApp");
         private static readonly string SettingsPath = Path.Combine(SettingsDir, "settings.json");
         private static readonly string DictPath = Path.Combine(SettingsDir, "dictionary.json");
 
@@ -76,6 +76,22 @@ namespace TTSApp
         public static bool FirstRunDone { get; set; } = false;
         public static string VoicesDir => Path.Combine(SettingsDir, "voices");
         public static Dictionary<string, string> PronunciationDict { get; set; } = new();
+
+        // AI text assist (optional, off by default). Cleans names/numbers before TTS so the
+        // narrator stops butchering CJK/hyphenated names and reads numbers/abbreviations aloud.
+        public static bool AiEnabled { get; set; } = false;
+        public static string AiProvider { get; set; } = "ollama";     // ollama (local) | deepseek
+        public static string AiApiKey { get; set; } = "";             // not needed for local Ollama
+        public static string AiModel { get; set; } = "qwen2.5:7b";
+        public static string AiBaseUrl { get; set; } = "http://localhost:11434"; // Ollama only
+        // Per-chapter text passes (all opt-in, off by default). Combined into one AI call per chapter.
+        public static bool AiNormalize { get; set; } = false;         // numbers/abbreviations -> spoken
+        public static bool AiSkipJunk { get; set; } = false;          // strip translator notes/ads/boilerplate
+        public static bool AiHeteronyms { get; set; } = false;        // fix context homographs (lead/read/tear)
+        public static bool AiEmphasis { get; set; } = false;          // insert [pause N] tags at dramatic beats
+
+        // True when any per-chapter text pass is enabled.
+        public static bool AiAnyTextPass => AiNormalize || AiSkipJunk || AiHeteronyms || AiEmphasis;
 
         /// <summary>
         /// Validates a voice-clone reference path and returns a path that is guaranteed
@@ -180,6 +196,15 @@ namespace TTSApp
                         WindowTop = data.WindowTop;
                         WindowMaximized = data.WindowMaximized;
                         FirstRunDone = data.FirstRunDone;
+                        AiEnabled = data.AiEnabled;
+                        AiProvider = data.AiProvider ?? "ollama";
+                        AiApiKey = data.AiApiKey ?? "";
+                        AiModel = data.AiModel ?? "qwen2.5:7b";
+                        AiBaseUrl = data.AiBaseUrl ?? "http://localhost:11434";
+                        AiNormalize = data.AiNormalize;
+                        AiSkipJunk = data.AiSkipJunk;
+                        AiHeteronyms = data.AiHeteronyms;
+                        AiEmphasis = data.AiEmphasis;
                     }
                 }
                 if (File.Exists(DictPath))
@@ -242,7 +267,16 @@ namespace TTSApp
                     WindowLeft = WindowLeft,
                     WindowTop = WindowTop,
                     WindowMaximized = WindowMaximized,
-                    FirstRunDone = FirstRunDone
+                    FirstRunDone = FirstRunDone,
+                    AiEnabled = AiEnabled,
+                    AiProvider = AiProvider,
+                    AiApiKey = AiApiKey,
+                    AiModel = AiModel,
+                    AiBaseUrl = AiBaseUrl,
+                    AiNormalize = AiNormalize,
+                    AiSkipJunk = AiSkipJunk,
+                    AiHeteronyms = AiHeteronyms,
+                    AiEmphasis = AiEmphasis
                 };
                 File.WriteAllText(SettingsPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
                 File.WriteAllText(DictPath, JsonSerializer.Serialize(PronunciationDict, new JsonSerializerOptions { WriteIndented = true }));
@@ -308,6 +342,15 @@ namespace TTSApp
             public double WindowTop { get; set; } = double.NaN;
             public bool WindowMaximized { get; set; } = false;
             public bool FirstRunDone { get; set; } = false;
+            public bool AiEnabled { get; set; } = false;
+            public string? AiProvider { get; set; } = "ollama";
+            public string? AiApiKey { get; set; } = "";
+            public string? AiModel { get; set; } = "qwen2.5:7b";
+            public string? AiBaseUrl { get; set; } = "http://localhost:11434";
+            public bool AiNormalize { get; set; } = false;
+            public bool AiSkipJunk { get; set; } = false;
+            public bool AiHeteronyms { get; set; } = false;
+            public bool AiEmphasis { get; set; } = false;
         }
     }
 

@@ -63,6 +63,47 @@
                     </StackPanel>
                 </Border>
 
+                <!-- AI Assist -->
+                <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="AI Assist (optional)" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="ChkAiEnabled" Content="Use AI to improve narration (off = fully local, no network)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
+                            <TextBlock Text="Provider:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" Width="56"/>
+                            <ComboBox x:Name="CmbAiProvider" Width="200" Height="26" FontSize="12" SelectionChanged="CmbAiProvider_SelectionChanged">
+                                <ComboBoxItem Content="Ollama (local, free, private)" Tag="ollama"/>
+                                <ComboBoxItem Content="DeepSeek (cloud, cheapest)" Tag="deepseek"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel x:Name="PanelAiBaseUrl" Orientation="Horizontal" Margin="20,0,0,8">
+                            <TextBlock Text="Server:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" Width="56"/>
+                            <TextBox x:Name="TxtAiBaseUrl" Width="300" Height="26" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel x:Name="PanelAiKey" Orientation="Horizontal" Margin="20,0,0,8">
+                            <TextBlock Text="API key:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" Width="56"/>
+                            <PasswordBox x:Name="TxtAiKey" Width="300" Height="26" FontSize="12"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
+                            <TextBlock Text="Model:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" Width="56"/>
+                            <TextBox x:Name="TxtAiModel" Width="300" Height="26" FontSize="12"/>
+                        </StackPanel>
+                        <TextBlock Text="Text passes (each runs once per chapter; combined into one call):"
+                                   Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" Margin="20,6,0,2"/>
+                        <CheckBox x:Name="ChkAiNormalize" Content="Normalize (numbers, abbreviations, OCR junk → spoken form)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="20,2,0,0"/>
+                        <CheckBox x:Name="ChkAiSkipJunk" Content="Strip boilerplate (translator notes, ads, &quot;please rate&quot;, nav links)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="20,2,0,0"/>
+                        <CheckBox x:Name="ChkAiHeteronyms" Content="Fix context homographs (lead/read/tear/live pronounced right)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="20,2,0,0"/>
+                        <CheckBox x:Name="ChkAiEmphasis" Content="Add pacing pauses at dramatic beats ([pause N] tags)"
+                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="20,2,0,0"/>
+                        <TextBlock Text="Name pronunciations: Dictionary → &quot;AI: Scan book for names&quot;.  Chapter detection: File menu → &quot;AI: Detect chapters&quot;.  Local (Ollama) = free + offline; DeepSeek = a few cents/book, text sent to their servers."
+                                   Foreground="{DynamicResource BrushTextMuted}" FontSize="11" TextWrapping="Wrap" Margin="20,6,0,0"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Pacing / Pauses -->
                 <Border Background="{DynamicResource BrushPanelBg}" CornerRadius="10" Padding="16" Margin="0,0,0,12">
                     <StackPanel>

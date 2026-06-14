@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using TTSApp.AI;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -985,8 +986,53 @@ namespace TTSApp
         #region Dictionary & Settings Windows
         private void MenuDictionary_Click(object sender, RoutedEventArgs e)
         {
-            var dict = new DictionaryWindow { Owner = this };
+            // Pass the loaded chapters' text so the dictionary's AI name-scan has something to read.
+            var selected = _chapters.Where(c => c.IsSelected).Select(c => c.Content);
+            if (!selected.Any()) selected = _chapters.Select(c => c.Content);
+            string bookText = string.Join("\n\n", selected);
+            var dict = new DictionaryWindow(bookText) { Owner = this };
             dict.ShowDialog();
+        }
+
+        private async void MenuAiDetectChapters_Click(object sender, RoutedEventArgs e)
+        {
+            if (!AiTextProcessor.IsConfigured)
+            {
+                MessageBox.Show("Enable AI Assist and configure a provider in Settings first.", "AI", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (_chapters.Count == 0)
+            {
+                MessageBox.Show("Open or import a book first.", "AI", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            if (MessageBox.Show(
+                    "Re-split the loaded text into chapters using AI?\n\nThis replaces the current chapter list.",
+                    "AI: Detect Chapters", MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+                return;
+
+            string fullText = string.Join("\n\n", _chapters.Select(c => c.Content));
+            SetBusy(true, "AI: detecting chapters...");
+            try
+            {
+                var detected = await AiTextProcessor.DetectChaptersAsync(fullText, CancellationToken.None);
+                if (detected.Count == 0)
+                {
+                    MessageBox.Show("The AI did not find clear chapter divisions; nothing changed.", "AI", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+                _chapters = detected.Select((d, i) => new ChapterItem { Title = d.Title, Content = d.Content, Index = i }).ToList();
+                ChaptersList.ItemsSource = null;
+                ChaptersList.ItemsSource = _chapters;
+                TxtChapterCount.Text = $"{_chapters.Count} chapter(s)";
+                if (_chapters.Count > 0) ChaptersList.SelectedIndex = 0;
+                MessageBox.Show($"Detected {_chapters.Count} chapter(s).", "AI", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Chapter detection failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally { SetBusy(false, "Ready"); }
         }
 
         private void MenuSettings_Click(object sender, RoutedEventArgs e)
@@ -1430,6 +1476,12 @@ namespace TTSApp
                 var castOwned = new List<ITtsEngine>();
                 try
                 {
+                    if (AppSettings.AiAnyTextPass && AiTextProcessor.IsConfigured)
+                    {
+                        Dispatcher.Invoke(() => TxtStatus.Text = "AI: preparing text...");
+                        textToPreview = await AiTextProcessor.ProcessChapterAsync(textToPreview, token).ConfigureAwait(false);
+                    }
+
                     if (AppSettings.CastEnabled)
                     {
                         Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
@@ -1658,12 +1710,58 @@ namespace TTSApp
             BtnBrowse.IsEnabled = false;
             BtnConvert.IsEnabled = true;        // stays clickable as a Cancel button
             LblConvert.Text = "Cancel";
-            ProgressBar.Maximum = selected.Count;
+            // Progress is weighted by chapter text length (not chapter count), and the ETA is
+            // derived from the *measured* synthesis throughput (chars/sec) rather than a guess.
+            // The bar stays indeterminate until the first chapter finishes and a real rate exists.
+            ProgressBar.IsIndeterminate = true;
             ProgressBar.Value = 0;
             foreach (var ch in selected) ch.Status = ConvertState.Queued;
 
+            var chapterChars = selected.Select(c => (long)Math.Max(1, (c.Content ?? "").Length)).ToList();
+            long totalChars = chapterChars.Sum();
+            long charsDone = 0;
+            int curIndex = 0;
+            string curTitle = selected[0].Title;
+            var chapterSw = new System.Diagnostics.Stopwatch();
+
             // #3 — elapsed timer drives the ETA shown during conversion.
             var convertSw = System.Diagnostics.Stopwatch.StartNew();
+
+            // Renders the detailed status line + progress bar. Runs on the UI thread (from the
+            // 1s ticker and at chapter boundaries). All inputs are measured, never estimated.
+            void RenderConvertStatus()
+            {
+                double totalSecs = convertSw.Elapsed.TotalSeconds;
+                bool haveRate = charsDone > 0 && totalSecs > 0.5;
+                string elapsed = DurationEstimator.FormatFriendly(convertSw.Elapsed);
+
+                if (!haveRate)
+                {
+                    ProgressBar.IsIndeterminate = true;
+                    TxtStatus.Text = $"Converting chapter {curIndex + 1}/{selected.Count}  ·  {curTitle}  ·  {elapsed} elapsed  ·  estimating…";
+                    LblProgress.Text = "0%";
+                    return;
+                }
+
+                double cps = charsDone / totalSecs;                  // measured chars per second
+                double predicted = chapterChars[curIndex] / cps;     // expected time for current chapter
+                double frac = predicted > 0 ? Math.Min(chapterSw.Elapsed.TotalSeconds / predicted, 0.99) : 0;
+                double doneNow = Math.Min(charsDone + frac * chapterChars[curIndex], totalChars);
+                double remainSecs = Math.Max(0, (totalChars - doneNow) / cps);
+                double pct = totalChars > 0 ? doneNow / totalChars * 100 : 0;
+
+                ProgressBar.IsIndeterminate = false;
+                ProgressBar.Maximum = totalChars;
+                ProgressBar.Value = doneNow;
+                LblProgress.Text = $"{pct:0}%";
+                TxtStatus.Text =
+                    $"Converting chapter {curIndex + 1}/{selected.Count}  ·  {curTitle}  ·  {pct:0}%  ·  " +
+                    $"{elapsed} elapsed  ·  ~{DurationEstimator.FormatFriendly(TimeSpan.FromSeconds(remainSecs))} left";
+            }
+
+            var statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            statusTimer.Tick += (_, _) => RenderConvertStatus();
+            statusTimer.Start();
 
             int speakerId = CmbVoice.SelectedIndex;
             float speed = (float)SliderSpeed.Value;
@@ -1695,6 +1793,8 @@ namespace TTSApp
                     Dispatcher.Invoke(() => chapter.Status = ConvertState.Converting);
                     string text = chapter.Content;
                     text = AppSettings.ApplyDictionary(text);
+                    if (AppSettings.AiAnyTextPass && AiTextProcessor.IsConfigured)
+                        text = await AiTextProcessor.ProcessChapterAsync(text, token).ConfigureAwait(false);
 
                     if (announce)
                     {
@@ -1720,23 +1820,17 @@ namespace TTSApp
 
                     try
                     {
+                        curIndex = i;
+                        curTitle = chapter.Title;
+                        chapterSw.Restart();
                         Dispatcher.Invoke(() =>
                         {
                             _isUpdatingText = true;
-                            string eta = "";
-                            if (i > 0)
-                            {
-                                double perChapter = convertSw.Elapsed.TotalSeconds / i;
-                                var remaining = TimeSpan.FromSeconds(perChapter * (selected.Count - i));
-                                eta = $"  ·  ~{DurationEstimator.FormatFriendly(remaining)} left";
-                            }
-                            TxtStatus.Text = $"Converting {i + 1} of {selected.Count}: {chapter.Title}{eta}";
                             TxtChapterTitle.Text = $"🔊 {chapter.Title}";
                             TxtPreview.Text = text.Length > 4000 ? text.Substring(0, 4000) + "\n\n..." : text;
-                            ProgressBar.Value = i;
-                            LblProgress.Text = $"{i + 1}/{selected.Count}";
                             ChaptersList.SelectedItem = chapter;
                             ChaptersList.ScrollIntoView(chapter);
+                            RenderConvertStatus();
                             _isUpdatingText = false;
                         });
 
@@ -1764,10 +1858,17 @@ namespace TTSApp
                             EmbedMp3Metadata(outputFile, chapter.Title);
                         }
 
-                        Dispatcher.Invoke(() => chapter.Status = ConvertState.Done);
+                        charsDone += chapterChars[i];
+                        Dispatcher.Invoke(() =>
+                        {
+                            chapter.Status = ConvertState.Done;
+                            RenderConvertStatus();
+                        });
                     }
                     catch (Exception ex)
                     {
+                        // Count the chapter's weight so the bar/ETA don't stall on a failed chapter.
+                        charsDone += chapterChars[i];
                         Dispatcher.Invoke(() =>
                         {
                             chapter.Status = ConvertState.Failed;
@@ -1840,6 +1941,8 @@ namespace TTSApp
 
             await _convertTask;
 
+                statusTimer.Stop(); // stop live ticks before showing the final status
+
                 if (token.IsCancellationRequested)
                 {
                     TxtStatus.Text = "Conversion cancelled.";
@@ -1847,8 +1950,12 @@ namespace TTSApp
                 }
                 else
                 {
-                    ProgressBar.Value = selected.Count;
-                    TxtStatus.Text = "Conversion complete!";
+                    ProgressBar.IsIndeterminate = false;
+                    ProgressBar.Maximum = totalChars;
+                    ProgressBar.Value = totalChars;
+                    LblProgress.Text = "100%";
+                    string took = DurationEstimator.FormatFriendly(convertSw.Elapsed);
+                    TxtStatus.Text = $"Conversion complete!  ·  {selected.Count} chapter(s) in {took}";
                     var open = MessageBox.Show("Audio conversion finished!\n\nOpen the output folder?",
                         "Done", MessageBoxButton.YesNo, MessageBoxImage.Information);
                     if (open == MessageBoxResult.Yes)
@@ -1868,6 +1975,7 @@ namespace TTSApp
             }
             finally
             {
+                statusTimer.Stop();
                 // Dispose only engines Voice Cast created (never the shared main engine).
                 foreach (var castEng in castOwnedEngines)
                 {

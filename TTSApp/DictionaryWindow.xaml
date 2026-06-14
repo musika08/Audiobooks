@@ -83,7 +83,9 @@
         <Grid Grid.Row="3" Margin="0,12,0,0">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                 <Button Content="Import…" Width="80" Height="32" Margin="0,0,8,0" Click="BtnImport_Click"/>
-                <Button Content="Export…" Width="80" Height="32" Click="BtnExport_Click"/>
+                <Button Content="Export…" Width="80" Height="32" Margin="0,0,8,0" Click="BtnExport_Click"/>
+                <Button x:Name="BtnAiScan" Content="AI: Scan book for names" Width="170" Height="32" Click="BtnAiScan_Click"
+                        ToolTip="Use AI to find hard-to-pronounce names in the loaded book and add respellings here for review"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button Content="Remove Selected" Width="135" Height="32" Margin="0,0,10,0" Click="BtnRemove_Click"/>
