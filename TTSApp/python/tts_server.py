@@ -388,6 +388,21 @@ def _dereverb(samples: np.ndarray, sr: int) -> np.ndarray:
         return samples
 
 
+def _edge_fade(samples: np.ndarray, sr: int, fade_ms: int = 6) -> np.ndarray:
+    """Linear fade-in/out on a chunk so its edges sit at zero amplitude. Without this,
+    concatenating chunks (speech + silence) produces an audible click/pop at every
+    boundary, i.e. after every punctuation mark."""
+    samples = np.asarray(samples, dtype=np.float32)
+    n = samples.shape[0]
+    fade = min(int(sr * fade_ms / 1000.0), n // 2)
+    if fade <= 0:
+        return samples
+    ramp = np.linspace(0.0, 1.0, fade, endpoint=False, dtype=np.float32)
+    samples[:fade] *= ramp
+    samples[-fade:] *= ramp[::-1]
+    return samples
+
+
 def to_wav_bytes(samples: np.ndarray, sr: int) -> bytes:
     samples = np.asarray(samples, dtype=np.float32).squeeze()
     samples = np.clip(samples, -1.0, 1.0)
@@ -453,11 +468,10 @@ def synthesize(req: SynthRequest):
         seg = normalize_text(seg)
         if seg and re.search(r"[A-Za-z0-9]", seg):
             # Do not mutate the incoming request object; build a local kwargs-only stand-in.
-            chunks.append(
-                np.asarray(
-                    _engine.synth(_request_with_text(req, seg)), dtype=np.float32
-                ).squeeze()
-            )
+            chunk = np.asarray(
+                _engine.synth(_request_with_text(req, seg)), dtype=np.float32
+            ).squeeze()
+            chunks.append(_edge_fade(chunk, sr))
         if pause_ms > 0:
             chunks.append(
                 np.zeros(
