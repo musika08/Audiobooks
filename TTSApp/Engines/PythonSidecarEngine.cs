@@ -124,7 +124,12 @@ namespace TTSApp
                 speaker_wav = speakerWav,
                 speed,
                 language = "en",
-                denoise = AppSettings.DereverbCloned
+                denoise = AppSettings.DereverbCloned,
+                temperature = AppSettings.VoiceTemperature,
+                repetition_penalty = AppSettings.VoiceRepetitionPenalty,
+                exaggeration = AppSettings.VoiceExaggeration,
+                cfg_weight = AppSettings.VoiceCfgWeight,
+                cfg_scale = AppSettings.VoiceCfgScale
             };
             var json = JsonSerializer.Serialize(payload);
 
@@ -389,6 +394,9 @@ namespace TTSApp
             // Force pip to print live, unbuffered, line-by-line so the status bar keeps moving.
             psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
             psi.EnvironmentVariables["PIP_PROGRESS_BAR"] = "off";
+            // Shared, persistent wheel cache in the app folder so the same package (e.g. torch)
+            // downloads once and is reused across engines / venv rebuilds.
+            psi.EnvironmentVariables["PIP_CACHE_DIR"] = Path.Combine(ScriptDir, "cache", "pip");
 
             using var p = Process.Start(psi)
                 ?? throw new Exception($"{what}: failed to start process '{file}'.");
@@ -467,7 +475,11 @@ namespace TTSApp
             };
 
             var hardDeadline = DateTime.UtcNow + hardCap;
-            long lastSize = -1;
+            // Baseline = whatever is already cached, so we only call it "downloading" when NEW bytes
+            // appear (an already-downloaded model just loads — no re-download).
+            long baseline = 0;
+            foreach (var d in watchDirs) baseline += DirSize(d);
+            long lastSize = baseline;
             DateTime lastProgress = DateTime.UtcNow;
             bool everDownloaded = false;
 
@@ -492,24 +504,22 @@ namespace TTSApp
 
                 if (size > lastSize)
                 {
-                    // Download is progressing → reset the stall timer.
+                    // New bytes arrived → an actual download is in progress.
                     lastProgress = DateTime.UtcNow;
                     lastSize = size;
-                    if (size > 0)
-                    {
-                        everDownloaded = true;
-                        Report($"Downloading model — {size / 1_000_000.0:N0} MB...");
-                        Progress(Math.Min(0.97, (double)size / expected));
-                    }
+                    everDownloaded = true;
+                    long newBytes = size - baseline;
+                    Report($"Downloading model — {newBytes / 1_000_000.0:N0} MB...");
+                    Progress(Math.Min(0.97, (double)newBytes / expected));
                 }
                 else
                 {
                     var idle = DateTime.UtcNow - lastProgress;
-                    if (everDownloaded)
-                    {
-                        Report($"Model downloaded ({size / 1_000_000.0:N0} MB) — loading into the GPU (can take a minute)...");
-                        Progress(null); // indeterminate during load so the bar isn't stuck at 97%
-                    }
+                    // Already-cached model (no new bytes) → just loading, not re-downloading.
+                    Report(everDownloaded
+                        ? "Model downloaded — loading into the GPU (can take a minute)..."
+                        : "Loading model into the GPU (can take a minute)...");
+                    Progress(null); // indeterminate during load
                     // Only give up if nothing has progressed for the whole stall window.
                     if (idle > stallLimit)
                         throw new TimeoutException(

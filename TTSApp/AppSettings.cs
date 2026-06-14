@@ -47,6 +47,13 @@ namespace TTSApp
         public static string? CloneReferencePath { get; set; }
         // Run a de-reverb/denoise pass on GPU-engine output (reduces room echo from reference clips).
         public static bool DereverbCloned { get; set; } = false;
+
+        // GPU-engine voice tuning (each engine uses the ones relevant to it).
+        public static double VoiceTemperature { get; set; } = 0.7;       // XTTS + Chatterbox
+        public static double VoiceRepetitionPenalty { get; set; } = 2.0;  // XTTS
+        public static double VoiceExaggeration { get; set; } = 0.5;       // Chatterbox
+        public static double VoiceCfgWeight { get; set; } = 0.5;          // Chatterbox
+        public static double VoiceCfgScale { get; set; } = 1.3;           // VibeVoice
         // Named, reusable cloned-voice reference clips (copied into the app's voices folder).
         public static List<SavedVoice> SavedVoices { get; set; } = new();
         public static string VoicesDir => Path.Combine(SettingsDir, "voices");
@@ -76,6 +83,11 @@ namespace TTSApp
                         PauseScalePercent = data.PauseScalePercent;
                         LevelSegmentVolume = data.LevelSegmentVolume;
                         DereverbCloned = data.DereverbCloned;
+                        VoiceTemperature = data.VoiceTemperature;
+                        VoiceRepetitionPenalty = data.VoiceRepetitionPenalty;
+                        VoiceExaggeration = data.VoiceExaggeration;
+                        VoiceCfgWeight = data.VoiceCfgWeight;
+                        VoiceCfgScale = data.VoiceCfgScale;
                         SavedVoices = data.SavedVoices ?? new();
                         MergeIntoSingleFile = data.MergeIntoSingleFile;
                         LastProjectPath = data.LastProjectPath;
@@ -123,6 +135,11 @@ namespace TTSApp
                     PauseScalePercent = PauseScalePercent,
                     LevelSegmentVolume = LevelSegmentVolume,
                     DereverbCloned = DereverbCloned,
+                    VoiceTemperature = VoiceTemperature,
+                    VoiceRepetitionPenalty = VoiceRepetitionPenalty,
+                    VoiceExaggeration = VoiceExaggeration,
+                    VoiceCfgWeight = VoiceCfgWeight,
+                    VoiceCfgScale = VoiceCfgScale,
                     SavedVoices = SavedVoices,
                     MergeIntoSingleFile = MergeIntoSingleFile,
                     LastProjectPath = LastProjectPath,
@@ -172,6 +189,11 @@ namespace TTSApp
             public int PauseScalePercent { get; set; } = 100;
             public bool LevelSegmentVolume { get; set; } = true;
             public bool DereverbCloned { get; set; } = false;
+            public double VoiceTemperature { get; set; } = 0.7;
+            public double VoiceRepetitionPenalty { get; set; } = 2.0;
+            public double VoiceExaggeration { get; set; } = 0.5;
+            public double VoiceCfgWeight { get; set; } = 0.5;
+            public double VoiceCfgScale { get; set; } = 1.3;
             public bool MergeIntoSingleFile { get; set; } = false;
             public string? LastProjectPath { get; set; }
             public string? LastOutputDir { get; set; }

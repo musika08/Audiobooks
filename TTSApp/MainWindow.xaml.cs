@@ -747,6 +747,17 @@ namespace TTSApp
                 ApplyMenuThemeCheck(AppSettings.Theme);
             }
         }
+
+        private void MenuVoiceTuning_Click(object sender, RoutedEventArgs e)
+        {
+            if (!IsSidecarModel(AppSettings.SelectedModel))
+            {
+                MessageBox.Show("Voice tuning applies to the GPU engines (XTTS, Chatterbox, VibeVoice). Select one first.",
+                    "Voice Tuning", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            new VoiceTuningWindow { Owner = this }.ShowDialog();
+        }
         #endregion
 
         #region Recent Files

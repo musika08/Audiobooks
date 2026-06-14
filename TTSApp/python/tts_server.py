@@ -51,7 +51,13 @@ class XttsEngine:
         return sorted(str(s) for s in spk)
 
     def synth(self, req) -> np.ndarray:
-        kwargs = dict(text=req.text, language=req.language or "en", speed=req.speed)
+        kwargs = dict(
+            text=req.text,
+            language=req.language or "en",
+            speed=req.speed,
+            temperature=req.temperature,
+            repetition_penalty=req.repetition_penalty,
+        )
         if req.speaker_wav and os.path.isfile(req.speaker_wav):
             kwargs["speaker_wav"] = req.speaker_wav
         else:
@@ -75,11 +81,25 @@ class ChatterboxEngine:
         return ["Default"]
 
     def synth(self, req) -> np.ndarray:
+        kw = dict(
+            exaggeration=req.exaggeration,
+            cfg_weight=req.cfg_weight,
+            temperature=req.temperature,
+        )
         if req.speaker_wav and os.path.isfile(req.speaker_wav):
-            wav = self.model.generate(req.text, audio_prompt_path=req.speaker_wav)
-        else:
-            wav = self.model.generate(req.text)
-        # Chatterbox returns a torch tensor
+            kw["audio_prompt_path"] = req.speaker_wav
+        try:
+            wav = self.model.generate(req.text, **kw)
+        except TypeError:
+            # Older chatterbox signature without tuning kwargs.
+            wav = self.model.generate(
+                req.text,
+                **(
+                    {"audio_prompt_path": req.speaker_wav}
+                    if req.speaker_wav and os.path.isfile(req.speaker_wav)
+                    else {}
+                ),
+            )
         if hasattr(wav, "detach"):
             wav = wav.detach().cpu().numpy()
         return np.asarray(wav).squeeze()
@@ -183,7 +203,7 @@ class VibeVoiceEngine:
             out = self.model.generate(
                 **inputs,
                 tokenizer=self.processor.tokenizer,
-                cfg_scale=1.3,
+                cfg_scale=req.cfg_scale,
             )
         audio = out.speech_outputs[0]
         if hasattr(audio, "detach"):
@@ -211,6 +231,12 @@ class SynthRequest(BaseModel):
     speed: float = 1.0
     language: str = "en"
     denoise: bool = False  # run a de-reverb/denoise pass on the output (DeepFilterNet)
+    # Voice tuning (each engine uses the relevant ones).
+    temperature: float = 0.7
+    repetition_penalty: float = 2.0
+    exaggeration: float = 0.5
+    cfg_weight: float = 0.5
+    cfg_scale: float = 1.3
 
 
 # Lazy DeepFilterNet state (loaded only when denoise is first requested).
