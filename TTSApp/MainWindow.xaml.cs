@@ -1243,6 +1243,15 @@ namespace TTSApp
                 return;
             }
 
+            // Dialog (dual-voice) mode is implemented for Kokoro only; GPU engines use a single voice.
+            if (AppSettings.EnableDialogMode && IsSidecarModel(AppSettings.SelectedModel))
+            {
+                MessageBox.Show(
+                    "Dual-voice (dialog) mode works only with the Kokoro engines.\n\n" +
+                    "The selected GPU engine will use a single voice. Switch to Kokoro Multi-Lang v1.0 for dual voices.",
+                    "Dialog Mode", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
             // #7 — offer to skip chapters already converted this session (resume).
             var alreadyDone = selected.Where(c => c.Status == ConvertState.Done).ToList();
             if (alreadyDone.Count > 0)

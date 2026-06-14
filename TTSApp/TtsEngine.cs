@@ -63,6 +63,16 @@ namespace TTSApp
             "zm_095", "zm_096", "zm_097", "zm_098", "zm_100"
         };
 
+        // Friendly dialog-voice names (Kokoro Multi-Lang v1.0 order) for the Settings dropdown.
+        // Index matches the model's speaker id, so DialogVoiceId can be used directly.
+        public static List<string> GetKokoroV1_0VoiceNames()
+        {
+            var list = new List<string>();
+            foreach (var code in KokoroMultiLangV1_0SpeakerNames)
+                list.Add(FriendlyVoiceName(code));
+            return list;
+        }
+
         public List<string> GetSpeakerNames()
         {
             int count = NumSpeakers;

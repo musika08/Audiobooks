@@ -44,13 +44,9 @@ namespace TTSApp
 
             LblVersion.Text = $"Current: v{Updater.AppVersion}";
 
-            // Populate dialog voice dropdown
+            // Populate dialog voice dropdown with Kokoro Multi-Lang v1.0 voices (dialog mode is Kokoro-only).
             CmbDialogVoice.Items.Clear();
-            // We need speaker names from MainWindow's TTS engine, but this window doesn't have access.
-            // Use a simple list of known Kokoro names as fallback.
-            var knownNames = new[] { "af", "af_bella", "af_nicole", "af_sarah", "af_sky",
-                "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis" };
-            foreach (var n in knownNames) CmbDialogVoice.Items.Add(n);
+            foreach (var n in TtsEngine.GetKokoroV1_0VoiceNames()) CmbDialogVoice.Items.Add(n);
             if (AppSettings.DialogVoiceId >= 0 && AppSettings.DialogVoiceId < CmbDialogVoice.Items.Count)
                 CmbDialogVoice.SelectedIndex = AppSettings.DialogVoiceId;
             else

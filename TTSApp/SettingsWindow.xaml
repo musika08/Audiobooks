@@ -54,7 +54,7 @@
                                    Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
                         <CheckBox x:Name="ChkAnnounce" Content="Announce chapter number and title before reading each chapter"
                                   Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" IsChecked="True" Margin="0,0,0,8"/>
-                        <CheckBox x:Name="ChkDialogMode" Content="Enable multi-voice dialog mode (alternates voice for quoted text)"
+                        <CheckBox x:Name="ChkDialogMode" Content="Enable multi-voice dialog mode (alternates voice for quoted text) — Kokoro only"
                                   Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,8"/>
                         <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
                             <TextBlock Text="Dialog voice:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
