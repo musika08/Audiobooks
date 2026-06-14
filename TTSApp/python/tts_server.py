@@ -70,6 +70,24 @@ class ChatterboxEngine:
     name = "chatterbox"
 
     def __init__(self):
+        # Chatterbox watermarks output via `perth`; if perth's backend failed to load,
+        # PerthImplicitWatermarker is None and crashes. Patch in a no-op watermarker.
+        try:
+            import perth
+
+            if getattr(perth, "PerthImplicitWatermarker", None) is None:
+
+                class _NoWatermark:
+                    def apply_watermark(self, wav, sample_rate=None, **kw):
+                        return wav
+
+                    def get_watermark(self, *a, **k):
+                        return None
+
+                perth.PerthImplicitWatermarker = _NoWatermark
+        except Exception:
+            pass
+
         from chatterbox.tts import ChatterboxTTS
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
