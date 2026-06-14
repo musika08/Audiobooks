@@ -20,6 +20,10 @@ import io
 import os
 import wave
 
+# Coqui XTTS shows an interactive license [y/n] prompt on first load. We run headless,
+# so auto-accept the non-commercial CPML to avoid hanging forever waiting for stdin.
+os.environ.setdefault("COQUI_TOS_AGREED", "1")
+
 import numpy as np
 import torch
 from fastapi import FastAPI, Response
