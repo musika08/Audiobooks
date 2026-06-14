@@ -445,7 +445,10 @@ namespace TTSApp
         // Build narrator/dialogue engine instances for Voice Cast, deduping by model (so XTTS+XTTS
         // shares one sidecar) and reusing the already-initialized main engine when its model matches.
         // Engines created here are added to 'owned' for disposal by the caller.
-        private (VoiceCast.Role Narrator, VoiceCast.Role Dialogue) BuildCastRoles(List<ITtsEngine> owned)
+        // providerIndex is the CmbProvider selection (0=cpu, 1=cuda, 2=dml), captured on the UI
+        // thread by the caller. Kokoro roles must use the user's real provider; forcing "cuda"
+        // on a CPU-only setup makes sherpa generate empty audio (SaveToWaveFile NRE).
+        private (VoiceCast.Role Narrator, VoiceCast.Role Dialogue) BuildCastRoles(List<ITtsEngine> owned, int providerIndex)
         {
             var cache = new Dictionary<string, ITtsEngine>();
             ITtsEngine Get(string model)
@@ -457,7 +460,7 @@ namespace TTSApp
                 else
                 {
                     eng = TtsEngineFactory.CreateEngine(model);
-                    eng.Initialize(TtsEngineFactory.ProviderFor(model, providerIndex: 1));
+                    eng.Initialize(TtsEngineFactory.ProviderFor(model, providerIndex));
                     owned.Add(eng);
                 }
                 cache[model] = eng;
@@ -1403,6 +1406,7 @@ namespace TTSApp
 
             int speakerId = CmbVoice.SelectedIndex;
             float speed = (float)SliderSpeed.Value;
+            int providerIndex = CmbProvider.SelectedIndex;
             string tempFile = Path.Combine(Path.GetTempPath(), $"tts_preview_{Guid.NewGuid()}.wav");
 
             BtnPreview.IsEnabled = false;
@@ -1421,7 +1425,7 @@ namespace TTSApp
                     if (AppSettings.CastEnabled)
                     {
                         Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
-                        var (n, d) = BuildCastRoles(castOwned);
+                        var (n, d) = BuildCastRoles(castOwned, providerIndex);
                         await VoiceCast.RenderAsync(textToPreview, speed, tempFile, n, d, token).ConfigureAwait(false);
                     }
                     else
@@ -1441,9 +1445,16 @@ namespace TTSApp
                 catch (Exception ex)
                 {
                     Logging.Log.Error(ex, "Preview generation failed");
+                    // Show the exception type + originating frame so an NRE points at a real line
+                    // instead of the bare "Object reference not set..." message.
+                    string firstFrame = (ex.StackTrace ?? "").Split('\n')
+                        .FirstOrDefault(l => l.Contains("TTSApp"))?.Trim() ?? "";
                     Dispatcher.Invoke(() =>
                     {
-                        MessageBox.Show($"Preview failed:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show(
+                            $"Preview failed: {ex.GetType().Name}\n{ex.Message}\n\n{firstFrame}\n\n" +
+                            $"Full details in: %LocalAppData%\\TTSApp\\logs\\app.log",
+                            "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     });
                 }
                 finally
@@ -1648,6 +1659,7 @@ namespace TTSApp
 
             int speakerId = CmbVoice.SelectedIndex;
             float speed = (float)SliderSpeed.Value;
+            int providerIndex = CmbProvider.SelectedIndex;
             bool announce = AppSettings.AnnounceChapterTitle;
             var chapterWavs = new List<string>();
             var chapterInfos = new List<(string Title, TimeSpan Start)>();
@@ -1664,7 +1676,7 @@ namespace TTSApp
                 if (AppSettings.CastEnabled)
                 {
                     Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
-                    (castNarrator, castDialogue) = BuildCastRoles(castOwnedEngines);
+                    (castNarrator, castDialogue) = BuildCastRoles(castOwnedEngines, providerIndex);
                 }
 
                 for (int i = 0; i < selected.Count; i++)

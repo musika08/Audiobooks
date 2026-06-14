@@ -353,6 +353,16 @@ namespace TTSApp
             var audio = _tts!.Generate(text, speed, speakerId);
             if (audio == null) return;
 
+            // Sherpa returns an object with no samples when generation produced nothing (e.g. an
+            // unavailable provider or an out-of-range speaker id); SaveToWaveFile then NREs inside
+            // the native binding. Skip those instead of crashing the whole render.
+            if (audio.Samples == null || audio.Samples.Length == 0)
+            {
+                Logging.Log.Warn($"TTS produced no audio for a segment (speaker {speakerId}); skipping.");
+                audio.Dispose();
+                return;
+            }
+
             var tempFile = Path.Combine(Path.GetTempPath(), $"tts_chunk_{Guid.NewGuid()}.wav");
             audio.SaveToWaveFile(tempFile);
             audio.Dispose();
