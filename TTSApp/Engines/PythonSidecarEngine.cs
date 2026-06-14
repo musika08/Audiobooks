@@ -117,6 +117,7 @@ namespace TTSApp
             string speaker = speakerId >= 0 && speakerId < _speakers.Count ? _speakers[speakerId] : "";
             string speakerWav = AppSettings.CloneReferencePath ?? "";
 
+            double pauseScale = AppSettings.PauseScalePercent / 100.0;
             var payload = new
             {
                 text,
@@ -129,7 +130,12 @@ namespace TTSApp
                 repetition_penalty = AppSettings.VoiceRepetitionPenalty,
                 exaggeration = AppSettings.VoiceExaggeration,
                 cfg_weight = AppSettings.VoiceCfgWeight,
-                cfg_scale = AppSettings.VoiceCfgScale
+                cfg_scale = AppSettings.VoiceCfgScale,
+                // Scaled pause durations (ms) so the server can pace punctuation like Kokoro does.
+                pause_comma = (int)(AppSettings.PauseAfterCommaMs * pauseScale),
+                pause_sentence = (int)(AppSettings.PauseAfterSentenceMs * pauseScale),
+                pause_ellipsis = (int)(AppSettings.PauseAfterEllipsisMs * pauseScale),
+                pause_paragraph = (int)(AppSettings.PauseAfterParagraphMs * pauseScale)
             };
             var json = JsonSerializer.Serialize(payload);
 

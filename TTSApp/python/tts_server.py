@@ -243,17 +243,55 @@ def normalize_text(t: str) -> str:
     return t.strip()
 
 
-def split_on_dot_runs(text: str):
-    """Split on ellipses / runs of 2+ dots. Returns [(segment, dot_count_after), ...].
-    The dots become inserted silence (no character for the model to vocalize)."""
-    text = text.replace("…", "...")
-    parts = []
-    last = 0
-    for m in _re.finditer(r"\.{2,}", text):
-        parts.append((text[last : m.start()], len(m.group(0))))
-        last = m.end()
-    parts.append((text[last:], 0))
-    return parts
+def segment_with_pauses(text, p_comma, p_sentence, p_ellipsis, p_paragraph):
+    """Split text into (spoken_segment, pause_ms_after) honoring punctuation.
+    Each segment keeps its punctuation for intonation; ellipses are removed and
+    become pure silence. Only breaks where the relevant pause > 0 (fewer model calls)."""
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n").replace("…", "...")
+    out = []
+    paras = _re.split(r"\n[ \t]*\n+", text)
+    for pidx, para in enumerate(paras):
+        para = _re.sub(r"[ \t]*\n[ \t]*", " ", para).strip()
+        if not para:
+            continue
+
+        buf = ""
+        i, n = 0, len(para)
+        while i < n:
+            ch = para[i]
+            # Ellipsis / dot-run → always break (remove dots), insert ellipsis pause.
+            if ch == "." and i + 1 < n and para[i + 1] == ".":
+                j = i
+                while j < n and para[j] == ".":
+                    j += 1
+                if buf.strip():
+                    out.append((buf.strip(), p_ellipsis))
+                    buf = ""
+                elif out:
+                    out[-1] = (out[-1][0], out[-1][1] + p_ellipsis)
+                else:
+                    out.append(("", p_ellipsis))
+                i = j
+                continue
+
+            buf += ch
+            if ch in ".!?;:" and p_sentence > 0:
+                if buf.strip():
+                    out.append((buf.strip(), p_sentence))
+                    buf = ""
+            elif ch == "," and p_comma > 0:
+                if buf.strip():
+                    out.append((buf.strip(), p_comma))
+                    buf = ""
+            i += 1
+
+        if buf.strip():
+            out.append((buf.strip(), 0))
+
+        if pidx < len(paras) - 1 and out and p_paragraph > 0:
+            out[-1] = (out[-1][0], out[-1][1] + p_paragraph)
+
+    return out if out else [(text.strip(), 0)]
 
 
 def build_engine(model_id: str):
@@ -282,6 +320,11 @@ class SynthRequest(BaseModel):
     exaggeration: float = 0.5
     cfg_weight: float = 0.5
     cfg_scale: float = 1.3
+    # Pause durations (ms) inserted after punctuation (0 = no break there).
+    pause_comma: int = 0
+    pause_sentence: int = 0
+    pause_ellipsis: int = 300
+    pause_paragraph: int = 0
 
 
 # Lazy DeepFilterNet state (loaded only when denoise is first requested).
@@ -345,27 +388,28 @@ def speakers():
 @app.post("/synthesize")
 def synthesize(req: SynthRequest):
     sr = _engine.sr
-    full_text = req.text or ""
 
-    # Split on dot-runs ("....."): speak the words, insert real silence for the dots
-    # (no '.' for the model to vocalize as a grunt/"ah"). Longer run = longer pause.
-    pieces = split_on_dot_runs(full_text)
+    # Pace punctuation: speak each segment (with its punctuation for intonation), then
+    # insert real silence after it. Ellipses become silence (no grunt/"ah").
+    pieces = segment_with_pauses(
+        req.text,
+        req.pause_comma,
+        req.pause_sentence,
+        req.pause_ellipsis,
+        req.pause_paragraph,
+    )
     chunks = []
-    for seg, dots in pieces:
+    for seg, pause_ms in pieces:
         seg = normalize_text(seg)
-        # Only synthesize segments that contain real speech; skip punctuation-only
-        # bits (lone quotes / periods) so the model doesn't utter "ah".
         if seg and _re.search(r"[A-Za-z0-9]", seg):
             req.text = seg
             chunks.append(np.asarray(_engine.synth(req), dtype=np.float32).squeeze())
-        if dots > 0:
-            ms = min(150 * dots, 2000)  # ~150ms per dot, capped at 2s
-            chunks.append(np.zeros(int(sr * ms / 1000.0), dtype=np.float32))
+        if pause_ms > 0:
+            chunks.append(
+                np.zeros(int(sr * min(pause_ms, 4000) / 1000.0), dtype=np.float32)
+            )
 
-    if chunks:
-        samples = np.concatenate(chunks)
-    else:
-        samples = np.zeros(1, dtype=np.float32)
+    samples = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
 
     if req.denoise:
         samples = _dereverb(samples, sr)
