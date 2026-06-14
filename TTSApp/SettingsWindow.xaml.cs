@@ -172,18 +172,36 @@ namespace TTSApp
             finally { BtnSyncSidecar.Content = "Sync GPU Sidecar Files"; BtnSyncSidecar.IsEnabled = true; }
         }
 
-        private void BtnResetGpu_Click(object sender, RoutedEventArgs e)
+        private async void BtnResetGpu_Click(object sender, RoutedEventArgs e)
         {
             if (MessageBox.Show(
-                "Delete the GPU engine Python environments so they reinstall from scratch?\n\n" +
+                "Reset the GPU engines? This will:\n\n" +
+                "1. Download the latest sidecar scripts + requirements from GitHub.\n" +
+                "2. Delete the GPU engine Python environments so they reinstall from scratch.\n\n" +
                 "Downloaded model weights are kept. The next time you pick a GPU engine it will reinstall (several minutes).",
                 "Reset GPU Engines", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
 
-            var (venvs, runtime) = PythonSidecarEngine.ResetEnvironment();
-            MessageBox.Show(
-                $"Removed {venvs} engine environment(s){(runtime ? " + the bundled Python" : "")}.\n\n" +
-                "Pick a GPU engine to reinstall.",
-                "Reset GPU Engines", MessageBoxButton.OK, MessageBoxImage.Information);
+            var btn = (Button)sender;
+            btn.IsEnabled = false;
+            try
+            {
+                // Pull the latest requirements first, otherwise the reinstall would just rebuild
+                // the same (possibly broken) deps from stale on-disk requirement files.
+                bool synced = await Updater.SyncSidecarFromGitHubAsync(showResult: false);
+                if (!synced &&
+                    MessageBox.Show(
+                        "Could not download the latest sidecar files (offline or GitHub unreachable).\n\n" +
+                        "Reset anyway using the requirement files already on disk?",
+                        "Reset GPU Engines", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    return;
+
+                var (venvs, runtime) = PythonSidecarEngine.ResetEnvironment();
+                MessageBox.Show(
+                    $"{(synced ? "Synced latest sidecar files. " : "")}Removed {venvs} engine environment(s){(runtime ? " + the bundled Python" : "")}.\n\n" +
+                    "Pick a GPU engine to reinstall.",
+                    "Reset GPU Engines", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            finally { btn.IsEnabled = true; }
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)

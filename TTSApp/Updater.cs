@@ -178,7 +178,7 @@ rmdir /s /q ""{EscapeBatchPath(work)}""
         // Live-pull the Python sidecar scripts (tts_server.py, requirements-*.txt, README) from the
         // latest release tag (not the mutable main branch). Busts deps markers so changed requirements
         // reinstall on the next engine launch.
-        public static async Task SyncSidecarFromGitHubAsync()
+        public static async Task<bool> SyncSidecarFromGitHubAsync(bool showResult = true)
         {
             string pythonDir = Path.Combine(AppContext.BaseDirectory, "python");
             try
@@ -190,8 +190,9 @@ rmdir /s /q ""{EscapeBatchPath(work)}""
                 string? tag = await GetLatestReleaseTagAsync(http);
                 if (string.IsNullOrEmpty(tag))
                 {
-                    MessageBox.Show("Could not determine the latest release tag.", "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
+                    if (showResult)
+                        MessageBox.Show("Could not determine the latest release tag.", "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
                 }
 
                 string apiUrl = $"{SidecarContentsApiBase}?ref={Uri.EscapeDataString(tag)}";
@@ -222,14 +223,17 @@ rmdir /s /q ""{EscapeBatchPath(work)}""
                     try { if (File.Exists(marker)) File.Delete(marker); } catch (Exception ex) { Logging.Log.Error(ex, $"Failed to delete deps marker {marker}"); }
                 }
 
-                MessageBox.Show(
-                    $"Synced {count} sidecar file(s) from GitHub ({tag}).\n\nGPU engines will re-check their Python dependencies the next time you select one.",
-                    "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (showResult)
+                    MessageBox.Show(
+                        $"Synced {count} sidecar file(s) from GitHub ({tag}).\n\nGPU engines will re-check their Python dependencies the next time you select one.",
+                        "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Information);
+                return true;
             }
             catch (Exception ex)
             {
                 Logging.Log.Error(ex, "Sidecar sync failed");
                 MessageBox.Show($"Sidecar sync failed:\n{ex.Message}", "Sidecar Sync", MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
             }
         }
 
