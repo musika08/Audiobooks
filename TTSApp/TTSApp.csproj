@@ -5,7 +5,7 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <UseWindowsForms>false</UseWindowsForms>
-    <Version>1.0.22</Version>
+    <Version>1.0.23</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="org.k2fsa.sherpa.onnx" Version="1.13.2" />

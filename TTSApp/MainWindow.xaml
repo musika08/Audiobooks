@@ -250,13 +250,17 @@
                                    FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Height="32">
                             <Slider x:Name="SliderSpeed" Width="90" VerticalAlignment="Center"
-                                    Minimum="0.5" Maximum="2.0" Value="1.0" TickFrequency="0.1"/>
+                                    Minimum="0.25" Maximum="3.0" Value="1.0" TickFrequency="0.05"
+                                    ValueChanged="SliderSpeed_ValueChanged"/>
                             <Border Background="{DynamicResource BrushPanelBgAlt}" CornerRadius="4"
-                                    Padding="6,0" Margin="6,0,0,0" Width="42" Height="32">
-                                <TextBlock x:Name="LblSpeed" Text="1.0x"
-                                           Foreground="{DynamicResource BrushTextPrimary}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center"
-                                           FontSize="12"/>
+                                    Padding="6,0" Margin="6,0,0,0" Width="48" Height="32">
+                                <TextBox x:Name="TxtSpeed" Text="1.0x"
+                                         Background="Transparent" BorderThickness="0"
+                                         Foreground="{DynamicResource BrushTextPrimary}"
+                                         VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                                         FontSize="12" MaxLength="6"
+                                         ToolTip="Type a speed from 0.25x to 3x"
+                                         LostFocus="TxtSpeed_LostFocus" KeyDown="TxtSpeed_KeyDown"/>
                             </Border>
                         </StackPanel>
                     </StackPanel>

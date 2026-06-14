@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -1871,10 +1872,17 @@ namespace TTSApp
             }
         }
 
+        // Guards against the slider <-> textbox handlers re-triggering each other.
+        private bool _isUpdatingSpeed;
+
         private void SliderSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (LblSpeed != null)
-                LblSpeed.Text = $"{e.NewValue:F1}x";
+            if (TxtSpeed != null && !_isUpdatingSpeed)
+            {
+                _isUpdatingSpeed = true;
+                TxtSpeed.Text = $"{e.NewValue:0.##}x";
+                _isUpdatingSpeed = false;
+            }
             ScheduleDurationRefresh();
             // Also refresh current chapter duration display
             if (ChaptersList.SelectedItem is ChapterItem chapter && !_isUpdatingText)
@@ -1882,6 +1890,37 @@ namespace TTSApp
                 float speed = (float)e.NewValue;
                 var est = DurationEstimator.Estimate(chapter.Content, speed);
                 TxtDuration.Text = est > TimeSpan.Zero ? $"≈ {DurationEstimator.FormatFriendly(est)}" : "";
+            }
+        }
+
+        private void TxtSpeed_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                CommitSpeedText();
+                e.Handled = true;
+            }
+        }
+
+        private void TxtSpeed_LostFocus(object sender, RoutedEventArgs e) => CommitSpeedText();
+
+        // Parse the typed speed ("1.5" or "1.5x"), clamp to the slider's 0.25-3x range, and
+        // push it to the slider. Invalid input reverts to the current slider value.
+        private void CommitSpeedText()
+        {
+            if (TxtSpeed == null || _isUpdatingSpeed) return;
+            string raw = TxtSpeed.Text.Trim().TrimEnd('x', 'X').Trim();
+            if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ||
+                double.TryParse(raw, NumberStyles.Float, CultureInfo.CurrentCulture, out v))
+            {
+                v = Math.Clamp(v, SliderSpeed.Minimum, SliderSpeed.Maximum);
+                SliderSpeed.Value = v; // fires ValueChanged, which rewrites the textbox
+            }
+            else
+            {
+                _isUpdatingSpeed = true;
+                TxtSpeed.Text = $"{SliderSpeed.Value:0.##}x";
+                _isUpdatingSpeed = false;
             }
         }
 

@@ -365,7 +365,7 @@ class SynthRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
     speaker: str = ""
     speaker_wav: str = ""  # reference audio path for cloning (overrides speaker)
-    speed: float = Field(1.0, ge=0.5, le=2.0)
+    speed: float = Field(1.0, ge=0.25, le=3.0)
     language: str = "en"
     denoise: bool = False  # run a de-reverb/denoise pass on the output (DeepFilterNet)
     # Voice tuning (each engine uses the relevant ones).
