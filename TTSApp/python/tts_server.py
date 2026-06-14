@@ -332,13 +332,6 @@ def build_engine(model_id: str):
 
 class SynthRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_LENGTH)
-
-
-def _request_with_text(req: SynthRequest, text: str):
-    """Return a shallow copy of the request with a new text value."""
-    data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
-    data["text"] = text
-    return types.SimpleNamespace(**data)
     speaker: str = ""
     speaker_wav: str = ""  # reference audio path for cloning (overrides speaker)
     speed: float = Field(1.0, ge=0.5, le=2.0)
@@ -355,6 +348,13 @@ def _request_with_text(req: SynthRequest, text: str):
     pause_sentence: int = Field(0, ge=0, le=MAX_PAUSE_MS)
     pause_ellipsis: int = Field(300, ge=0, le=MAX_PAUSE_MS)
     pause_paragraph: int = Field(0, ge=0, le=MAX_PAUSE_MS)
+
+
+def _request_with_text(req: SynthRequest, text: str):
+    """Return a shallow copy of the request with a new text value."""
+    data = req.model_dump() if hasattr(req, "model_dump") else req.dict()
+    data["text"] = text
+    return types.SimpleNamespace(**data)
 
 
 # Lazy DeepFilterNet state (loaded only when denoise is first requested).
@@ -453,10 +453,16 @@ def synthesize(req: SynthRequest):
         seg = normalize_text(seg)
         if seg and re.search(r"[A-Za-z0-9]", seg):
             # Do not mutate the incoming request object; build a local kwargs-only stand-in.
-            chunks.append(np.asarray(_engine.synth(_request_with_text(req, seg)), dtype=np.float32).squeeze())
+            chunks.append(
+                np.asarray(
+                    _engine.synth(_request_with_text(req, seg)), dtype=np.float32
+                ).squeeze()
+            )
         if pause_ms > 0:
             chunks.append(
-                np.zeros(int(sr * min(pause_ms, MAX_PAUSE_MS) / 1000.0), dtype=np.float32)
+                np.zeros(
+                    int(sr * min(pause_ms, MAX_PAUSE_MS) / 1000.0), dtype=np.float32
+                )
             )
 
     samples = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
