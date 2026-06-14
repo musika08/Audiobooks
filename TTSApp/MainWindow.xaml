@@ -261,7 +261,7 @@
                     <TextBlock Text="📚 Chapters" FontSize="18" FontWeight="Bold"
                                Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
 
-                    <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,0,8">
+                    <UniformGrid Grid.Row="1" Columns="7" Margin="0,0,0,8">
                         <Button x:Name="BtnSelectAll" Height="32" Padding="0" Margin="0,0,4,0"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnSelectAll_Click" ToolTip="Select all chapters">
@@ -287,10 +287,15 @@
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnMoveDown_Click" ToolTip="Move chapter down">
                             <Viewbox Width="13" Height="13"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriDown}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnDeleteChapter" Height="32" Padding="0"
+                        <Button x:Name="BtnDeleteChapter" Height="32" Padding="0" Margin="0,0,4,0"
                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                Background="{DynamicResource BrushButtonBg}" Click="BtnDeleteChapter_Click" ToolTip="Delete chapter">
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnDeleteChapter_Click" ToolTip="Delete checked chapters (or selected)">
                             <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoTrash}"/></Viewbox>
+                        </Button>
+                        <Button x:Name="BtnSortChapters" Height="32" Padding="0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                Background="{DynamicResource BrushButtonBg}" Click="BtnSortChapters_Click" ToolTip="Sort chapters by chapter number">
+                            <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="M4,6 H16 M4,11 H12 M4,16 H8"/></Viewbox>
                         </Button>
                     </UniformGrid>
 
@@ -429,6 +434,11 @@
                                     Background="{DynamicResource BrushButtonBg}"
                                     Click="BtnPrevChapter_Click" ToolTip="Previous chapter">
                                 <Viewbox Width="18" Height="18"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriLeft}"/></Viewbox>
+                            </Button>
+                            <Button x:Name="BtnStopFetch" Width="38" Height="32" Margin="0,0,5,0" IsEnabled="False"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnStopFetch_Click" ToolTip="Stop fetching chapters">
+                                <Viewbox Width="14" Height="14"><Path Fill="{DynamicResource BrushTextPrimary}" Data="M6,6 H18 V18 H6 Z"/></Viewbox>
                             </Button>
                             <Button x:Name="BtnNextChapter" Width="38" Height="32" Margin="0,0,5,0"
                                     Background="{DynamicResource BrushButtonBg}"

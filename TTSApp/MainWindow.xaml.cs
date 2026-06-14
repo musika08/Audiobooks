@@ -296,6 +296,16 @@ namespace TTSApp
             StepChapter(1);
         }
 
+        // Set by the Stop button to break the Fetch-All loop after the current chapter completes.
+        private bool _fetchCancelRequested;
+
+        private void BtnStopFetch_Click(object sender, RoutedEventArgs e)
+        {
+            _fetchCancelRequested = true;
+            BtnStopFetch.IsEnabled = false;
+            TxtStatus.Text = "Stopping…";
+        }
+
         // Fetch every chapter by following the site's "next" link from the current/last chapter
         // (or a URL the user enters), until there is no next link.
         private async void BtnFetchAll_Click(object sender, RoutedEventArgs e)
@@ -322,11 +332,14 @@ namespace TTSApp
             var visited = new HashSet<string>();
             int count = 0;
             const int cap = 2000; // safety stop for sites that loop
+            _fetchCancelRequested = false;
             BtnFetchAll.IsEnabled = false;
+            BtnStopFetch.IsEnabled = true;
             try
             {
                 while (!string.IsNullOrEmpty(url) && visited.Add(url) && count < cap)
                 {
+                    if (_fetchCancelRequested) break;
                     Dispatcher.Invoke(() => TxtStatus.Text = $"Fetching all… {count + 1}");
                     bool ok = await ImportUrlAsChapterAsync(url);
                     if (!ok) break;
@@ -337,7 +350,9 @@ namespace TTSApp
             }
             finally
             {
+                _fetchCancelRequested = false;
                 BtnFetchAll.IsEnabled = true;
+                BtnStopFetch.IsEnabled = false;
                 SetBusy(false, "Ready");
             }
             MessageBox.Show($"Fetched {count} chapter(s).", "Fetch All Chapters",
@@ -1152,32 +1167,63 @@ namespace TTSApp
 
         private void BtnDeleteChapter_Click(object sender, RoutedEventArgs e)
         {
-            if (ChaptersList.SelectedItem is ChapterItem chapter)
+            // Delete every checked chapter; if none are checked, fall back to the selected one.
+            var targets = _chapters.Where(c => c.IsSelected).ToList();
+            if (targets.Count == 0 && ChaptersList.SelectedItem is ChapterItem sel)
+                targets.Add(sel);
+            if (targets.Count == 0) return;
+
+            string prompt = targets.Count == 1
+                ? $"Delete '{targets[0].Title}'?"
+                : $"Delete {targets.Count} chapters?";
+            if (MessageBox.Show(prompt, "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+
+            SaveStateForUndo();
+            int firstIdx = _chapters.IndexOf(targets[0]);
+            foreach (var c in targets) _chapters.Remove(c);
+            for (int i = 0; i < _chapters.Count; i++) _chapters[i].Index = i;
+            ChaptersList.Items.Refresh();
+            if (_chapters.Count > 0)
             {
-                var result = MessageBox.Show($"Delete '{chapter.Title}'?", "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result == MessageBoxResult.Yes)
-                {
-                    SaveStateForUndo();
-                    _chapters.Remove(chapter);
-                    for (int i = 0; i < _chapters.Count; i++) _chapters[i].Index = i;
-                    ChaptersList.Items.Refresh();
-                    if (_chapters.Count > 0)
-                    {
-                        ChaptersList.SelectedIndex = Math.Min(chapter.Index, _chapters.Count - 1);
-                    }
-                    else
-                    {
-                        _isUpdatingText = true;
-                        TxtPreview.Text = "";
-                        TxtChapterTitle.Text = "📝 Chapter Content";
-                        TxtWordCount.Text = "No chapters";
-                        TxtDuration.Text = "";
-                        _isUpdatingText = false;
-                    }
-                    TxtChapterCount.Text = $"{_chapters.Count} chapter(s)";
-                    ScheduleDurationRefresh();
-                }
+                ChaptersList.SelectedIndex = Math.Clamp(firstIdx, 0, _chapters.Count - 1);
             }
+            else
+            {
+                _isUpdatingText = true;
+                TxtPreview.Text = "";
+                TxtChapterTitle.Text = "📝 Chapter Content";
+                TxtWordCount.Text = "No chapters";
+                TxtDuration.Text = "";
+                _isUpdatingText = false;
+            }
+            TxtChapterCount.Text = $"{_chapters.Count} chapter(s)";
+            ScheduleDurationRefresh();
+        }
+
+        // Sort chapters ascending by the chapter number parsed from each title
+        // ("Chapter 70. ..." → 70). Titles without a number sort to the end, keeping their order.
+        private void BtnSortChapters_Click(object sender, RoutedEventArgs e)
+        {
+            if (_chapters.Count < 2) return;
+
+            static int ChapterNum(ChapterItem c)
+            {
+                var m = Regex.Match(c.Title ?? "", @"chapter\s+(\d+)", RegexOptions.IgnoreCase);
+                if (!m.Success) m = Regex.Match(c.Title ?? "", @"\d+");
+                return m.Success && int.TryParse(m.Groups[m.Groups.Count > 1 ? 1 : 0].Value, out int n)
+                    ? n : int.MaxValue;
+            }
+
+            SaveStateForUndo();
+            var selected = ChaptersList.SelectedItem as ChapterItem;
+            _chapters = _chapters.OrderBy(ChapterNum).ToList();
+            for (int i = 0; i < _chapters.Count; i++) _chapters[i].Index = i;
+            ChaptersList.ItemsSource = null;
+            ChaptersList.ItemsSource = _chapters;
+            if (selected != null) { ChaptersList.SelectedItem = selected; ChaptersList.ScrollIntoView(selected); }
+            TxtStatus.Text = "Sorted chapters by number";
+            ScheduleDurationRefresh();
         }
 
         // #9 — filter the chapter list by title.
@@ -2356,34 +2402,52 @@ namespace TTSApp
             return string.IsNullOrWhiteSpace(line) ? null : line;
         }
 
-        // Find a "next chapter" link: prefer rel="next", else an anchor whose text contains "next".
+        // Find the next chapter's URL, in strict reading order.
+        // Many sites put the chapter number in the last path segment (…/strange-dragon-70/ or …/series/70/)
+        // but the rest of the path (e.g. the publish date) changes per chapter, so we can't just build the
+        // next URL. Instead derive the next segment name (slug stem + N+1) and find the anchor on the page
+        // that points to it — that follows the series in order, ignoring site-wide "next post" links and
+        // chapter-list dropdowns that scramble the order.
         private static string? ExtractNextLink(string html, string baseUrl)
         {
-            string? href = null;
+            // Parse the trailing number in the URL path: pre = everything up to it (ends in a non-digit).
+            var m = Regex.Match(baseUrl, @"^(?<pre>.*\D)(?<num>\d+)(?<slash>/?)(?<q>[?#].*)?$");
+            if (m.Success && int.TryParse(m.Groups["num"].Value, out int n))
+            {
+                string pre = m.Groups["pre"].Value;
+                int next = n + 1;
+                // The last path segment's text before the number, e.g. "strange-dragon-" (or "" for …/70/).
+                string stem = pre.Substring(pre.LastIndexOf('/') + 1);
+                string targetSeg = stem + next;
+
+                // Find an anchor on the page whose last path segment is exactly the target (any date/path).
+                var link = Regex.Match(html,
+                    @"href=[""']([^""']*/" + Regex.Escape(targetSeg) + @"/?)(?:[?#][^""']*)?[""']",
+                    RegexOptions.IgnoreCase);
+                if (link.Success)
+                {
+                    try { return new Uri(new Uri(baseUrl), link.Groups[1].Value).ToString(); }
+                    catch { /* fall through */ }
+                }
+
+                // No matching anchor: build the incremented URL on the same path as a last resort.
+                // (If that chapter lives at a different path it 404s and the fetch loop stops cleanly.)
+                return $"{pre}{next}{m.Groups["slash"].Value}{m.Groups["q"].Value}";
+            }
+
+            // No number in the URL: fall back to a semantic rel="next" link for slug-only sites.
             var rel = Regex.Match(html, @"<a\b[^>]*\brel=[""']next[""'][^>]*\bhref=[""']([^""']+)[""']", RegexOptions.IgnoreCase);
             if (!rel.Success)
                 rel = Regex.Match(html, @"<a\b[^>]*\bhref=[""']([^""']+)[""'][^>]*\brel=[""']next[""']", RegexOptions.IgnoreCase);
-            if (rel.Success) href = rel.Groups[1].Value;
-
-            if (href == null)
+            if (rel.Success)
             {
-                // Anchor whose visible text starts with / contains "next" (e.g. "Next Chapter", "Next ›").
-                var m = Regex.Match(html, @"<a\b[^>]*\bhref=[""']([^""']+)[""'][^>]*>\s*(?:<[^>]+>\s*)*[^<]*next[^<]*<",
-                    RegexOptions.IgnoreCase);
-                if (m.Success) href = m.Groups[1].Value;
+                string href = rel.Groups[1].Value;
+                if (!string.IsNullOrWhiteSpace(href) && !href.StartsWith("#") && !href.StartsWith("javascript:"))
+                {
+                    try { return new Uri(new Uri(baseUrl), href).ToString(); }
+                    catch { return null; }
+                }
             }
-
-            if (!string.IsNullOrWhiteSpace(href) && !href.StartsWith("#") && !href.StartsWith("javascript:"))
-            {
-                try { return new Uri(new Uri(baseUrl), href).ToString(); }
-                catch { /* fall through to URL-increment */ }
-            }
-
-            // Fallback: many novel sites put the chapter number at the end of the URL
-            // (…/series/<slug>/1 → …/2). Increment the last number in the path.
-            var num = Regex.Match(baseUrl, @"^(.*?/)(\d+)(/?)([?#].*)?$");
-            if (num.Success && int.TryParse(num.Groups[2].Value, out int n))
-                return $"{num.Groups[1].Value}{n + 1}{num.Groups[3].Value}{num.Groups[4].Value}";
 
             return null;
         }
