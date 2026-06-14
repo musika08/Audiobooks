@@ -12,7 +12,7 @@ namespace TTSApp
     // Pulls the latest release from GitHub and updates the app in place (via a relaunch script).
     public static class Updater
     {
-        public const string AppVersion = "1.0.9";
+        public const string AppVersion = "1.0.10";
         private const string LatestReleaseApi = "https://api.github.com/repos/musika08/Audiobooks/releases/latest";
 
         public static async Task CheckForUpdatesAsync()
