@@ -229,6 +229,21 @@ class VibeVoiceEngine:
         return np.asarray(audio).squeeze()
 
 
+import re as _re
+
+
+def normalize_text(t: str) -> str:
+    """Collapse ellipses / runs of dots to a single period so the model pauses
+    instead of grunting on '.....'. (GPU engines get raw text, unlike Kokoro.)"""
+    if not t:
+        return t
+    t = t.replace("…", ".")  # … -> .
+    t = _re.sub(r"\.{2,}", ". ", t)  # "....." / ".." -> ". "
+    t = _re.sub(r"\s*([,.;:!?])\1+", r"\1", t)  # collapse repeated punctuation
+    t = _re.sub(r"[ \t]+", " ", t)
+    return t.strip()
+
+
 def build_engine(model_id: str):
     if model_id == "chatterbox":
         return ChatterboxEngine()
@@ -317,6 +332,7 @@ def speakers():
 
 @app.post("/synthesize")
 def synthesize(req: SynthRequest):
+    req.text = normalize_text(req.text)  # collapse "....." so the model doesn't grunt
     samples = _engine.synth(req)
     if req.denoise:
         samples = _dereverb(samples, _engine.sr)
