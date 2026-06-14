@@ -1877,6 +1877,9 @@ namespace TTSApp
 
         private void SliderSpeed_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
+            // Fires during InitializeComponent (slider Value="1.0") before sibling controls
+            // like ChaptersList exist — bail until the window is fully built.
+            if (!IsInitialized) return;
             if (TxtSpeed != null && !_isUpdatingSpeed)
             {
                 _isUpdatingSpeed = true;
