@@ -1243,6 +1243,21 @@ namespace TTSApp
         private void BtnMoveUp_Click(object sender, RoutedEventArgs e) => MoveSelectedChapter(-1);
         private void BtnMoveDown_Click(object sender, RoutedEventArgs e) => MoveSelectedChapter(1);
 
+        // Double-click a chapter row to rename it.
+        private void ChaptersList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (ChaptersList.SelectedItem is not ChapterItem ch) return;
+            string current = ch.Title ?? "";
+            string result = Microsoft.VisualBasic.Interaction.InputBox("Rename chapter:", "Rename Chapter", current);
+            if (string.IsNullOrWhiteSpace(result) || result == current) return;
+
+            SaveStateForUndo();
+            ch.Title = result.Trim();
+            ChaptersList.Items.Refresh();
+            if (ChaptersList.SelectedItem is ChapterItem sel && sel == ch)
+                TxtChapterTitle.Text = $"📝 {ch.Title}";
+        }
+
         private void MoveSelectedChapter(int delta)
         {
             if (ChaptersList.SelectedItem is not ChapterItem ch) return;

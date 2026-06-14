@@ -49,10 +49,70 @@
         <!-- MENU BAR -->
         <Menu Grid.Row="0" Background="{DynamicResource BrushMenuBg}" Foreground="{DynamicResource BrushTextPrimary}">
             <Menu.Resources>
-                <!-- Top-level headers only: center text within the highlight box -->
+                <!-- Top-level headers: custom template so the text is centered inside the highlight box. -->
                 <Style x:Key="TopMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
-                    <Setter Property="Padding" Value="12,4"/>
+                    <Setter Property="Padding" Value="14,5"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Grid>
+                                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                          Margin="{TemplateBinding Padding}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <Popup x:Name="PART_Popup" AllowsTransparency="True" Focusable="False"
+                                           Placement="Bottom" PopupAnimation="Fade"
+                                           IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <Border Background="{DynamicResource BrushDropdownBg}"
+                                                BorderBrush="{DynamicResource BrushBorder}" BorderThickness="1"
+                                                CornerRadius="6" Padding="2">
+                                            <ItemsPresenter/>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushButtonHover}"/>
+                                    </Trigger>
+                                    <Trigger Property="IsSubmenuOpen" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushButtonHover}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+                <!-- Theme submenu items: fixed check column so the checkmark never shifts the label. -->
+                <Style x:Key="ThemeMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="MenuItem">
+                                <Border x:Name="Bd" Background="{TemplateBinding Background}" Padding="6,4" CornerRadius="4">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="22"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="Chk" Grid.Column="0" Text="✓" Visibility="Collapsed"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource BrushAccentGreen}"/>
+                                        <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                          RecognizesAccessKey="True" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="Chk" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                    <Trigger Property="IsHighlighted" Value="True">
+                                        <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BrushDropdownHover}"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                 </Style>
             </Menu.Resources>
             <MenuItem Header="_File" Style="{StaticResource TopMenuItem}">
@@ -92,9 +152,9 @@
                 <MenuItem Header="_Mini Player" Click="MenuMiniPlayer_Click"/>
                 <Separator/>
                 <MenuItem Header="_Theme">
-                    <MenuItem Header="_Dark" x:Name="MenuThemeDark" IsCheckable="True" Checked="MenuTheme_Checked"/>
-                    <MenuItem Header="_Light" x:Name="MenuThemeLight" IsCheckable="True" Checked="MenuTheme_Checked"/>
-                    <MenuItem Header="_Midnight" x:Name="MenuThemeMidnight" IsCheckable="True" Checked="MenuTheme_Checked"/>
+                    <MenuItem Header="_Dark" x:Name="MenuThemeDark" IsCheckable="True" Checked="MenuTheme_Checked" Style="{StaticResource ThemeMenuItem}"/>
+                    <MenuItem Header="_Light" x:Name="MenuThemeLight" IsCheckable="True" Checked="MenuTheme_Checked" Style="{StaticResource ThemeMenuItem}"/>
+                    <MenuItem Header="_Midnight" x:Name="MenuThemeMidnight" IsCheckable="True" Checked="MenuTheme_Checked" Style="{StaticResource ThemeMenuItem}"/>
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="_Dictionary" Click="MenuDictionary_Click" Style="{StaticResource TopMenuItem}"/>
@@ -312,6 +372,7 @@
                                      AllowDrop="True"
                                      PreviewMouseLeftButtonDown="ChaptersList_PreviewMouseLeftButtonDown"
                                      MouseMove="ChaptersList_MouseMove"
+                                     MouseDoubleClick="ChaptersList_MouseDoubleClick"
                                      Drop="ChaptersList_Drop">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
