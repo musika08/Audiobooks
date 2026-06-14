@@ -73,6 +73,30 @@ namespace TTSApp
             return list;
         }
 
+        // Friendly voice names for a given Kokoro model (Voice Cast voice pickers).
+        public static List<string> GetVoiceNamesForModel(string modelName)
+        {
+            string[] codes = modelName switch
+            {
+                "kokoro-multi-lang-v1_0" => KokoroMultiLangV1_0SpeakerNames,
+                "kokoro-multi-lang-v1_1" => KokoroMultiLangSpeakerNames,
+                "kokoro-en-v0_19" => KokoroEnSpeakerNames,
+                _ => KokoroMultiLangV1_0SpeakerNames
+            };
+            var list = new List<string>();
+            foreach (var code in codes) list.Add(FriendlyVoiceName(code));
+            return list;
+        }
+
+        // Narrator/dialogue split shared with Voice Cast (same quote heuristic as dialog mode).
+        public static List<(string Text, bool IsDialog)> GetDialogSegments(string text)
+        {
+            var result = new List<(string, bool)>();
+            foreach (var s in SplitIntoDialogSegments(text))
+                result.Add((s.Text, s.IsDialog));
+            return result;
+        }
+
         public List<string> GetSpeakerNames()
         {
             int count = NumSpeakers;
@@ -126,6 +150,13 @@ namespace TTSApp
         public TtsEngine()
         {
             _modelName = AppSettings.SelectedModel;
+            _modelPath = Path.Combine(ModelDownloader.ModelDir, _modelName);
+        }
+
+        // Explicit-model ctor (Voice Cast builds engines for a model other than the selected one).
+        public TtsEngine(string modelName)
+        {
+            _modelName = modelName;
             _modelPath = Path.Combine(ModelDownloader.ModelDir, _modelName);
         }
 

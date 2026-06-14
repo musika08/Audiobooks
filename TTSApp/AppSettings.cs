@@ -19,6 +19,17 @@ namespace TTSApp
         public static string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
         public static bool EnableDialogMode { get; set; } = false;
         public static int DialogVoiceId { get; set; } = 1;
+
+        // Voice Cast: narrator and dialogue rendered by separately-chosen engines/voices.
+        // Allowed combos (enforced by VoiceCastWindow): Kokoro+Kokoro, Kokoro+oneGPU, or sameGPU+sameGPU.
+        // Two different GPU engines is rejected (would need two models in VRAM).
+        public static bool CastEnabled { get; set; } = false;
+        public static string CastNarratorModel { get; set; } = "kokoro-multi-lang-v1_0";
+        public static int CastNarratorVoiceId { get; set; } = 0;
+        public static string? CastNarratorCloneRef { get; set; }
+        public static string CastDialogueModel { get; set; } = "kokoro-multi-lang-v1_0";
+        public static int CastDialogueVoiceId { get; set; } = 1;
+        public static string? CastDialogueCloneRef { get; set; }
         public static int PauseAfterCommaMs { get; set; } = 50;
         public static int PauseAfterSentenceMs { get; set; } = 100;
         public static int PauseAfterParagraphMs { get; set; } = 500;
@@ -76,6 +87,13 @@ namespace TTSApp
                         SelectedModel = data.SelectedModel ?? "kokoro-multi-lang-v1_0";
                         EnableDialogMode = data.EnableDialogMode;
                         DialogVoiceId = data.DialogVoiceId;
+                        CastEnabled = data.CastEnabled;
+                        CastNarratorModel = data.CastNarratorModel ?? "kokoro-multi-lang-v1_0";
+                        CastNarratorVoiceId = data.CastNarratorVoiceId;
+                        CastNarratorCloneRef = data.CastNarratorCloneRef;
+                        CastDialogueModel = data.CastDialogueModel ?? "kokoro-multi-lang-v1_0";
+                        CastDialogueVoiceId = data.CastDialogueVoiceId;
+                        CastDialogueCloneRef = data.CastDialogueCloneRef;
                         PauseAfterCommaMs = data.PauseAfterCommaMs;
                         PauseAfterSentenceMs = data.PauseAfterSentenceMs;
                         PauseAfterParagraphMs = data.PauseAfterParagraphMs;
@@ -128,6 +146,13 @@ namespace TTSApp
                     SelectedModel = SelectedModel,
                     EnableDialogMode = EnableDialogMode,
                     DialogVoiceId = DialogVoiceId,
+                    CastEnabled = CastEnabled,
+                    CastNarratorModel = CastNarratorModel,
+                    CastNarratorVoiceId = CastNarratorVoiceId,
+                    CastNarratorCloneRef = CastNarratorCloneRef,
+                    CastDialogueModel = CastDialogueModel,
+                    CastDialogueVoiceId = CastDialogueVoiceId,
+                    CastDialogueCloneRef = CastDialogueCloneRef,
                     PauseAfterCommaMs = PauseAfterCommaMs,
                     PauseAfterSentenceMs = PauseAfterSentenceMs,
                     PauseAfterParagraphMs = PauseAfterParagraphMs,
@@ -182,6 +207,13 @@ namespace TTSApp
             public string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
             public bool EnableDialogMode { get; set; } = false;
             public int DialogVoiceId { get; set; } = 1;
+            public bool CastEnabled { get; set; } = false;
+            public string? CastNarratorModel { get; set; } = "kokoro-multi-lang-v1_0";
+            public int CastNarratorVoiceId { get; set; } = 0;
+            public string? CastNarratorCloneRef { get; set; }
+            public string? CastDialogueModel { get; set; } = "kokoro-multi-lang-v1_0";
+            public int CastDialogueVoiceId { get; set; } = 1;
+            public string? CastDialogueCloneRef { get; set; }
             public int PauseAfterCommaMs { get; set; } = 50;
             public int PauseAfterSentenceMs { get; set; } = 100;
             public int PauseAfterParagraphMs { get; set; } = 500;

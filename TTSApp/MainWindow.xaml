@@ -88,6 +88,7 @@
             </MenuItem>
             <MenuItem Header="_Dictionary" Click="MenuDictionary_Click"/>
             <MenuItem Header="_Voice Tuning" Click="MenuVoiceTuning_Click"/>
+            <MenuItem Header="Voice _Cast" Click="MenuVoiceCast_Click"/>
             <MenuItem Header="_Settings" Click="MenuSettings_Click"/>
         </Menu>
 

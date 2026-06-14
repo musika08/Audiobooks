@@ -295,7 +295,34 @@ namespace TTSApp
             modelName is "xtts-v2" or "chatterbox" or "vibevoice";
 
         private static ITtsEngine CreateEngine(string modelName) =>
-            IsSidecarModel(modelName) ? new PythonSidecarEngine(modelName) : new TtsEngine();
+            IsSidecarModel(modelName) ? new PythonSidecarEngine(modelName) : new TtsEngine(modelName);
+
+        // Build narrator/dialogue engine instances for Voice Cast, deduping by model (so XTTS+XTTS
+        // shares one sidecar) and reusing the already-initialized main engine when its model matches.
+        // Engines created here are added to 'owned' for disposal by the caller.
+        private (VoiceCast.Role Narrator, VoiceCast.Role Dialogue) BuildCastRoles(List<ITtsEngine> owned)
+        {
+            var cache = new Dictionary<string, ITtsEngine>();
+            ITtsEngine Get(string model)
+            {
+                if (cache.TryGetValue(model, out var cached)) return cached;
+                ITtsEngine eng;
+                if (model == AppSettings.SelectedModel && _ttsEngine.IsInitialized)
+                    eng = _ttsEngine;
+                else
+                {
+                    eng = CreateEngine(model);
+                    eng.Initialize(IsSidecarModel(model) ? "cuda" : "cpu");
+                    owned.Add(eng);
+                }
+                cache[model] = eng;
+                return eng;
+            }
+
+            var n = new VoiceCast.Role { Engine = Get(AppSettings.CastNarratorModel), SpeakerId = AppSettings.CastNarratorVoiceId, CloneRef = AppSettings.CastNarratorCloneRef };
+            var d = new VoiceCast.Role { Engine = Get(AppSettings.CastDialogueModel), SpeakerId = AppSettings.CastDialogueVoiceId, CloneRef = AppSettings.CastDialogueCloneRef };
+            return (n, d);
+        }
 
         private void SelectModelInDropdown(string modelName)
         {
@@ -757,6 +784,11 @@ namespace TTSApp
                 return;
             }
             new VoiceTuningWindow { Owner = this }.ShowDialog();
+        }
+
+        private void MenuVoiceCast_Click(object sender, RoutedEventArgs e)
+        {
+            new VoiceCastWindow { Owner = this }.ShowDialog();
         }
         #endregion
 
@@ -1349,10 +1381,20 @@ namespace TTSApp
             var chapterInfos = new List<(string Title, TimeSpan Start)>();
             TimeSpan currentStart = TimeSpan.Zero;
 
+            // Voice Cast: built once below (inside the worker) so its engines load off the UI thread.
+            VoiceCast.Role? castNarrator = null, castDialogue = null;
+            var castOwnedEngines = new List<ITtsEngine>();
+
             try
             {
             await Task.Run(() =>
             {
+                if (AppSettings.CastEnabled)
+                {
+                    Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
+                    (castNarrator, castDialogue) = BuildCastRoles(castOwnedEngines);
+                }
+
                 for (int i = 0; i < selected.Count; i++)
                 {
                     if (token.IsCancellationRequested) break;
@@ -1401,7 +1443,10 @@ namespace TTSApp
 
                         // #19 — use the chapter's voice override if set, else the global voice.
                         int chapterVoice = chapter.VoiceOverride >= 0 ? chapter.VoiceOverride : speakerId;
-                        _ttsEngine.Generate(text, chapterVoice, speed, outputFile);
+                        if (castNarrator != null && castDialogue != null)
+                            VoiceCast.Render(text, speed, outputFile, castNarrator, castDialogue);
+                        else
+                            _ttsEngine.Generate(text, chapterVoice, speed, outputFile);
 
                         // Per-chapter: trim always; normalize per-chapter only when NOT merging
                         // (merged output is normalized once as a whole below).
@@ -1520,6 +1565,11 @@ namespace TTSApp
             }
             finally
             {
+                // Dispose only engines Voice Cast created (never the shared main engine).
+                foreach (var castEng in castOwnedEngines)
+                {
+                    try { castEng.Dispose(); } catch { /* ignore */ }
+                }
                 _convertCts?.Dispose();
                 _convertCts = null;
                 LblConvert.Text = "Convert";
