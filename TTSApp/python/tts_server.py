@@ -182,6 +182,9 @@ class VibeVoiceEngine:
     """
 
     name = "vibevoice"
+    full_text = (
+        True  # long-form model: synthesize the whole text in one pass, never chunked
+    )
 
     def __init__(self):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -225,6 +228,11 @@ class VibeVoiceEngine:
             padding=True,
             return_tensors="pt",
         ).to(self.device)
+        # Fixed seed so the cloned voice and ambience stay stable run-to-run instead of
+        # re-rolling a different voice/background each generation.
+        torch.manual_seed(0)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(0)
         with torch.no_grad():
             out = self.model.generate(
                 **inputs,
@@ -415,7 +423,12 @@ def _dereverb(samples: np.ndarray, sr: int) -> np.ndarray:
             out = torchaudio.functional.resample(out, target, sr)
         return out.squeeze().cpu().numpy()
     except Exception as e:  # pragma: no cover
-        print(f"De-reverb skipped (DeepFilterNet unavailable): {e}", flush=True)
+        # Optional feature: denoise/de-reverb is off unless DeepFilterNet is installed.
+        # This is informational, not an error — audio is returned unprocessed.
+        print(
+            f"Info: denoise pass disabled (DeepFilterNet not installed) — {e}",
+            flush=True,
+        )
         return samples
 
 
@@ -517,6 +530,20 @@ def synthesize(req: SynthRequest):
         raise HTTPException(status_code=503, detail="Engine not loaded yet")
 
     sr = _engine.sr
+
+    # Long-form engines (VibeVoice) must see the whole text in one generation. Splitting
+    # them per punctuation makes the model re-roll the cloned voice every chunk (different
+    # voice, stray ambient/background sounds at each seam), so bypass the pacer for them.
+    if getattr(_engine, "full_text", False):
+        whole = normalize_text(req.text)
+        samples = np.asarray(
+            _engine.synth(_request_with_text(req, whole)), dtype=np.float32
+        ).squeeze()
+        samples = _trim_silence(samples, sr)
+        samples = _time_stretch(samples, sr, req.speed)
+        if req.denoise:
+            samples = _dereverb(samples, sr)
+        return Response(content=to_wav_bytes(samples, sr), media_type="audio/wav")
 
     # Pace punctuation: speak each segment (with its punctuation for intonation), then
     # insert real silence after it. Ellipses become silence (no grunt/"ah").

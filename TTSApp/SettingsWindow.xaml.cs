@@ -21,7 +21,6 @@ namespace TTSApp
             TxtRewind.Text = AppSettings.RewindSeconds.ToString();
             TxtForward.Text = AppSettings.ForwardSeconds.ToString();
             ChkAnnounce.IsChecked = AppSettings.AnnounceChapterTitle;
-            ChkDialogMode.IsChecked = AppSettings.EnableDialogMode;
             ChkLevelVolume.IsChecked = AppSettings.LevelSegmentVolume;
             ChkDereverb.IsChecked = AppSettings.DereverbCloned;
             ChkMerge.IsChecked = AppSettings.MergeIntoSingleFile;
@@ -47,14 +46,6 @@ namespace TTSApp
 
             LblVersion.Text = $"Current: v{Updater.AppVersion}";
 
-            // Populate dialog voice dropdown with Kokoro Multi-Lang v1.0 voices (dialog mode is Kokoro-only).
-            CmbDialogVoice.Items.Clear();
-            foreach (var n in TtsEngine.GetKokoroV1_0VoiceNames()) CmbDialogVoice.Items.Add(n);
-            if (AppSettings.DialogVoiceId >= 0 && AppSettings.DialogVoiceId < CmbDialogVoice.Items.Count)
-                CmbDialogVoice.SelectedIndex = AppSettings.DialogVoiceId;
-            else
-                CmbDialogVoice.SelectedIndex = Math.Min(1, CmbDialogVoice.Items.Count - 1);
-
             // Restore scroll after layout settles.
             Dispatcher.BeginInvoke(new Action(() => SettingsScroll.ScrollToVerticalOffset(_lastScrollOffset)),
                 System.Windows.Threading.DispatcherPriority.Loaded);
@@ -77,7 +68,6 @@ namespace TTSApp
             AppSettings.PauseScalePercent = (int)SliderPauseScale.Value;
 
             AppSettings.AnnounceChapterTitle = ChkAnnounce.IsChecked == true;
-            AppSettings.EnableDialogMode = ChkDialogMode.IsChecked == true;
             AppSettings.LevelSegmentVolume = ChkLevelVolume.IsChecked == true;
             AppSettings.DereverbCloned = ChkDereverb.IsChecked == true;
             AppSettings.MergeIntoSingleFile = ChkMerge.IsChecked == true;
@@ -92,7 +82,6 @@ namespace TTSApp
                 AppSettings.BackgroundVolumePercent = bgvol;
             if (CmbExportPreset.SelectedItem is ComboBoxItem presetItem)
                 AppSettings.ExportPreset = (presetItem.Content.ToString() ?? "Custom").Split(' ')[0];
-            AppSettings.DialogVoiceId = CmbDialogVoice.SelectedIndex;
 
             if (CmbTheme.SelectedItem is ComboBoxItem item)
             {

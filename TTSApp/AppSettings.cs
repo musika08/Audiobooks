@@ -17,8 +17,6 @@ namespace TTSApp
         public static bool AnnounceChapterTitle { get; set; } = true;
         public static string Theme { get; set; } = "Dark";
         public static string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
-        public static bool EnableDialogMode { get; set; } = false;
-        public static int DialogVoiceId { get; set; } = 1;
 
         // Voice Cast: narrator and dialogue rendered by separately-chosen engines/voices.
         // Allowed combos (enforced by VoiceCastWindow): Kokoro+Kokoro, Kokoro+oneGPU, or sameGPU+sameGPU.
@@ -143,8 +141,6 @@ namespace TTSApp
                         AnnounceChapterTitle = data.AnnounceChapterTitle;
                         Theme = data.Theme ?? "Dark";
                         SelectedModel = data.SelectedModel ?? "kokoro-multi-lang-v1_0";
-                        EnableDialogMode = data.EnableDialogMode;
-                        DialogVoiceId = data.DialogVoiceId;
                         CastEnabled = data.CastEnabled;
                         CastNarratorModel = data.CastNarratorModel ?? "kokoro-multi-lang-v1_0";
                         CastNarratorVoiceId = data.CastNarratorVoiceId;
@@ -208,8 +204,6 @@ namespace TTSApp
                     AnnounceChapterTitle = AnnounceChapterTitle,
                     Theme = Theme,
                     SelectedModel = SelectedModel,
-                    EnableDialogMode = EnableDialogMode,
-                    DialogVoiceId = DialogVoiceId,
                     CastEnabled = CastEnabled,
                     CastNarratorModel = CastNarratorModel,
                     CastNarratorVoiceId = CastNarratorVoiceId,
@@ -275,8 +269,6 @@ namespace TTSApp
             public bool AnnounceChapterTitle { get; set; } = true;
             public string Theme { get; set; } = "Dark";
             public string SelectedModel { get; set; } = "kokoro-multi-lang-v1_0";
-            public bool EnableDialogMode { get; set; } = false;
-            public int DialogVoiceId { get; set; } = 1;
             public bool CastEnabled { get; set; } = false;
             public string? CastNarratorModel { get; set; } = "kokoro-multi-lang-v1_0";
             public int CastNarratorVoiceId { get; set; } = 0;

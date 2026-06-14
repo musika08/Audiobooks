@@ -76,9 +76,31 @@ namespace TTSApp
             return list;
         }
 
-        // Friendly voice names for a given Kokoro model (Voice Cast voice pickers).
+        // XTTS v2 built-in studio speakers. The model is frozen (Coqui is defunct), so this list
+        // never changes. The sidecar returns them sorted(), so callers must sort with
+        // StringComparer.Ordinal (mirrors Python's default sort) to keep speaker ids aligned.
+        public static readonly string[] XttsV2SpeakerNames =
+        {
+            "Claribel Dervla", "Daisy Studious", "Gracie Wise", "Tammie Ema", "Alison Dietlinde",
+            "Ana Florence", "Annmarie Nele", "Asya Anara", "Brenda Stern", "Gitta Nikolina",
+            "Henriette Usha", "Sofia Hellen", "Tammy Grit", "Tanja Adelina", "Vjollca Johnnie",
+            "Andrew Chipper", "Badr Odhiappo", "Dionisio Schuyler", "Royston Min", "Viktor Eka",
+            "Abrahan Mackey", "Adde Michal", "Baldur Sanjin", "Craig Gutsy", "Damien Black",
+            "Gilberto Mathias", "Ilkin Urbano", "Kazuhiko Atallah", "Ludvig Milivoj", "Suad Qasim",
+            "Torcull Diarmuid", "Viktor Menelaos", "Zacharie Aimilios", "Nova Hogarth", "Maja Ruoho",
+            "Uta Obando", "Lidiya Szekeres", "Chandra MacFarland", "Szofi Granger", "Camilla Holmström",
+            "Lilya Stainthorpe", "Zofija Kendrick", "Narelle Moon", "Barbora MacLean",
+            "Alexandra Hisakawa", "Alma María", "Rosemary Okafor", "Ige Behringer", "Filip Traverse",
+            "Damjan Chapman", "Wulf Carlevaro", "Aaron Dreschner", "Kumar Dahl", "Eugenio Mataracı",
+            "Ferran Simen", "Xavier Hayasaka", "Luis Moray", "Marcos Rudaski"
+        };
+
+        // Friendly voice names for a given engine model (Voice Cast voice pickers).
         public static List<string> GetVoiceNamesForModel(string modelName)
         {
+            if (modelName == "xtts-v2")
+                return XttsV2SpeakerNames.OrderBy(n => n, StringComparer.Ordinal).ToList();
+
             string[] codes = modelName switch
             {
                 "kokoro-multi-lang-v1_0" => KokoroMultiLangV1_0SpeakerNames,
@@ -228,47 +250,27 @@ namespace TTSApp
 
             text = NormalizeTextForTts(text);
 
-            bool dialogMode = AppSettings.EnableDialogMode;
-            int dialogVoiceId = AppSettings.DialogVoiceId;
-            // Level each chunk to equal loudness only when mixing voices (dialog mode), so narrator
-            // and dialogue match without flattening the dynamics of a single-voice chapter.
-            _levelSegments = dialogMode && AppSettings.LevelSegmentVolume;
+            // This engine always renders a single voice; dual-voice narrator/dialogue is handled
+            // by Voice Cast, which calls this per segment with the chosen voice.
+            _levelSegments = false;
 
             // One global knob scales every pause type at once (100 = normal).
             double pauseScale = AppSettings.PauseScalePercent / 100.0;
             int commaPause = (int)(AppSettings.PauseAfterCommaMs * pauseScale);
             int sentencePause = (int)(AppSettings.PauseAfterSentenceMs * pauseScale);
-            int paragraphPause = (int)(AppSettings.PauseAfterParagraphMs * pauseScale);
             int ellipsisPause = (int)(AppSettings.PauseAfterEllipsisMs * pauseScale);
 
             var tempFiles = new List<string>();
 
-            if (dialogMode)
+            // Split on inline [pause N] tags (N = milliseconds), then render each piece normally.
+            var pieces = SplitOnPauseTags(text);
+            foreach (var (pieceText, explicitPauseMs) in pieces)
             {
-                var segments = SplitIntoDialogSegments(text);
-                foreach (var segment in segments)
-                {
-                    int sid = segment.IsDialog ? dialogVoiceId : speakerId;
-                    RenderPiece(segment.Text, sid, speed, tempFiles, ellipsisPause);
+                if (!string.IsNullOrWhiteSpace(pieceText))
+                    RenderSentences(pieceText, speakerId, speed, tempFiles, commaPause, sentencePause, ellipsisPause);
 
-                    if (paragraphPause > 0 && segment.Text.EndsWith("\n\n"))
-                    {
-                        AppendSilence(tempFiles, paragraphPause);
-                    }
-                }
-            }
-            else
-            {
-                // Split on inline [pause N] tags (N = milliseconds), then render each piece normally.
-                var pieces = SplitOnPauseTags(text);
-                foreach (var (pieceText, explicitPauseMs) in pieces)
-                {
-                    if (!string.IsNullOrWhiteSpace(pieceText))
-                        RenderSentences(pieceText, speakerId, speed, tempFiles, commaPause, sentencePause, ellipsisPause);
-
-                    if (explicitPauseMs > 0)
-                        AppendSilence(tempFiles, (int)(explicitPauseMs * pauseScale));
-                }
+                if (explicitPauseMs > 0)
+                    AppendSilence(tempFiles, (int)(explicitPauseMs * pauseScale));
             }
 
             if (tempFiles.Count == 0)

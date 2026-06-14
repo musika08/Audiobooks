@@ -55,9 +55,14 @@ namespace TTSApp
             }
             else if (model == "xtts-v2")
             {
-                combo.Items.Add("Built-in default voice");
+                // Built-in XTTS speakers first (index = speaker id), then any saved clones.
+                foreach (var n in TtsEngine.GetVoiceNamesForModel(model)) combo.Items.Add(n);
+                int speakerCount = combo.Items.Count;
                 foreach (var v in _savedVoices) combo.Items.Add($"Clone: {v.Name}");
-                combo.SelectedIndex = SavedIndex(cloneRef) is int si ? si + 1 : 0;
+                if (SavedIndex(cloneRef) is int si)
+                    combo.SelectedIndex = speakerCount + si;          // a clone
+                else
+                    combo.SelectedIndex = voiceId >= 0 && voiceId < speakerCount ? voiceId : 0;
             }
             else // chatterbox / vibevoice — clone only
             {
@@ -121,8 +126,10 @@ namespace TTSApp
             }
             if (model == "xtts-v2")
             {
-                if (idx <= 0) return true; // built-in default
-                cloneRef = _savedVoices[idx - 1].FilePath;
+                int speakerCount = TtsEngine.GetVoiceNamesForModel(model).Count;
+                if (idx < 0) { voiceId = 0; return true; }
+                if (idx < speakerCount) { voiceId = idx; return true; }   // built-in speaker
+                cloneRef = _savedVoices[idx - speakerCount].FilePath;     // a clone
                 return true;
             }
             // clone-only engines

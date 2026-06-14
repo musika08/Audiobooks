@@ -38,11 +38,9 @@ namespace TTSApp
             var temps = new List<string>();
 
             // Each role renders single-voice; routing happens here, not inside an engine's dialog mode.
-            bool savedDialog = AppSettings.EnableDialogMode;
             string? savedClone = AppSettings.CloneReferencePath;
             try
             {
-                AppSettings.EnableDialogMode = false;
                 foreach (var seg in segments)
                 {
                     if (token.IsCancellationRequested) break;
@@ -63,7 +61,6 @@ namespace TTSApp
             }
             finally
             {
-                AppSettings.EnableDialogMode = savedDialog;
                 AppSettings.CloneReferencePath = savedClone;
             }
 

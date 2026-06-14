@@ -54,14 +54,8 @@
                                    Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,10"/>
                         <CheckBox x:Name="ChkAnnounce" Content="Announce chapter number and title before reading each chapter"
                                   Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" IsChecked="True" Margin="0,0,0,8"/>
-                        <CheckBox x:Name="ChkDialogMode" Content="Enable multi-voice dialog mode (alternates voice for quoted text) — Kokoro only"
+                        <CheckBox x:Name="ChkLevelVolume" Content="Balance narrator &amp; dialogue volume in Voice Cast (level each voice)"
                                   Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,0,0,8"/>
-                        <StackPanel Orientation="Horizontal" Margin="20,0,0,8">
-                            <TextBlock Text="Dialog voice:" Foreground="{DynamicResource BrushTextSecondary}" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <ComboBox x:Name="CmbDialogVoice" Width="140" Height="26" FontSize="12"/>
-                        </StackPanel>
-                        <CheckBox x:Name="ChkLevelVolume" Content="Balance narrator &amp; dialogue volume (level each voice)"
-                                  Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="20,0,0,8"/>
                         <CheckBox x:Name="ChkDereverb" Content="Reduce echo/reverb on GPU cloned voices (DeepFilterNet)"
                                   Foreground="{DynamicResource BrushTextPrimary}" FontSize="13" Margin="0,4,0,0"/>
                         <TextBlock Text="Best results still come from a clean, dry reference clip."
