@@ -5,7 +5,7 @@
 
 #define AppName "AI Audiobook Studio"
 #define AppExe "TTSApp.exe"
-#define AppVersion "1.0.10"
+#define AppVersion "1.0.11"
 #define Publisher "TTSApp"
 
 [Setup]
