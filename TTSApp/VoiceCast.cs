@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using NAudio.Lame;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
@@ -23,7 +24,8 @@ namespace TTSApp
 
         // Render one chapter: split into narrator/dialogue segments, synth each with its role's
         // engine/voice, then merge to outputPath (.wav or .mp3).
-        public static void Render(string text, float speed, string outputPath, Role narrator, Role dialogue)
+        public static void Render(string text, float speed, string outputPath, Role narrator, Role dialogue,
+            CancellationToken token = default)
         {
             var segments = TtsEngine.GetDialogSegments(text);
             var temps = new List<string>();
@@ -36,6 +38,7 @@ namespace TTSApp
                 AppSettings.EnableDialogMode = false;
                 foreach (var seg in segments)
                 {
+                    if (token.IsCancellationRequested) break;
                     if (string.IsNullOrWhiteSpace(seg.Text)) continue;
                     var role = seg.IsDialog ? dialogue : narrator;
 

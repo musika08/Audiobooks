@@ -7,6 +7,9 @@ namespace TTSApp
 {
     public partial class SettingsWindow : Window
     {
+        // Remembered scroll position so reopening Settings lands where you left off.
+        private static double _lastScrollOffset;
+
         public SettingsWindow()
         {
             InitializeComponent();
@@ -51,6 +54,10 @@ namespace TTSApp
                 CmbDialogVoice.SelectedIndex = AppSettings.DialogVoiceId;
             else
                 CmbDialogVoice.SelectedIndex = Math.Min(1, CmbDialogVoice.Items.Count - 1);
+
+            // Restore scroll after layout settles.
+            Dispatcher.BeginInvoke(new Action(() => SettingsScroll.ScrollToVerticalOffset(_lastScrollOffset)),
+                System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private void BtnSave_Click(object sender, RoutedEventArgs e)
@@ -93,6 +100,7 @@ namespace TTSApp
                 ThemeManager.ApplyTheme(AppSettings.Theme);
             }
             AppSettings.Save();
+            _lastScrollOffset = SettingsScroll.VerticalOffset;
             DialogResult = true;
             Close();
         }
@@ -180,6 +188,7 @@ namespace TTSApp
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)
         {
+            _lastScrollOffset = SettingsScroll.VerticalOffset;
             DialogResult = false;
             Close();
         }

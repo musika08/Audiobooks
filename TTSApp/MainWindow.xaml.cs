@@ -22,6 +22,8 @@ namespace TTSApp
         public static readonly RoutedUICommand UndoAllCommand = new("Undo All", "UndoAll", typeof(MainWindow));
         public static readonly RoutedUICommand RedoAllCommand = new("Redo All", "RedoAll", typeof(MainWindow));
         public static readonly RoutedUICommand ReplaceAllCommand = new("Replace All", "ReplaceAll", typeof(MainWindow));
+        public static readonly RoutedUICommand PreviewCommand = new("Preview", "Preview", typeof(MainWindow));
+        public static readonly RoutedUICommand ConvertCommand = new("Convert", "Convert", typeof(MainWindow));
 
         private List<ChapterItem> _chapters = new();
         private ITtsEngine _ttsEngine = new TtsEngine();
@@ -53,6 +55,10 @@ namespace TTSApp
         // Set while a conversion is running; re-clicking Convert cancels it.
         private CancellationTokenSource? _convertCts;
 
+        // #5 — chapter drag-reorder state.
+        private Point _dragStartPoint;
+        private ChapterItem? _draggedChapter;
+
         public MainWindow()
         {
             InitializeComponent();
@@ -62,6 +68,7 @@ namespace TTSApp
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
             AppSettings.Load();
+            RestoreWindowPlacement();
             CleanStaleTempFiles();
             PythonSidecarEngine.CleanupStaleServer();
             LoadRecentFiles();
@@ -134,6 +141,61 @@ namespace TTSApp
             }
 
             UpdateGpuEngineAvailability();
+            ShowFirstRunTipIfNeeded();
+        }
+
+        // #6 — restore last window size/position; ignore off-screen or invalid saved values.
+        private void RestoreWindowPlacement()
+        {
+            if (AppSettings.WindowWidth >= MinWidth && AppSettings.WindowHeight >= MinHeight)
+            {
+                Width = AppSettings.WindowWidth;
+                Height = AppSettings.WindowHeight;
+            }
+            if (!double.IsNaN(AppSettings.WindowLeft) && !double.IsNaN(AppSettings.WindowTop))
+            {
+                var vw = SystemParameters.VirtualScreenWidth;
+                var vh = SystemParameters.VirtualScreenHeight;
+                if (AppSettings.WindowLeft > -50 && AppSettings.WindowTop > -50 &&
+                    AppSettings.WindowLeft < vw - 100 && AppSettings.WindowTop < vh - 100)
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual;
+                    Left = AppSettings.WindowLeft;
+                    Top = AppSettings.WindowTop;
+                }
+            }
+            if (AppSettings.WindowMaximized) WindowState = WindowState.Maximized;
+        }
+
+        private void SaveWindowPlacement()
+        {
+            AppSettings.WindowMaximized = WindowState == WindowState.Maximized;
+            // RestoreBounds holds the normal (un-maximized) rect even while maximized.
+            var r = WindowState == WindowState.Normal
+                ? new Rect(Left, Top, Width, Height)
+                : RestoreBounds;
+            AppSettings.WindowWidth = r.Width;
+            AppSettings.WindowHeight = r.Height;
+            AppSettings.WindowLeft = r.Left;
+            AppSettings.WindowTop = r.Top;
+        }
+
+        // #11.3 — one-time onboarding tip pointing at the key controls.
+        private void ShowFirstRunTipIfNeeded()
+        {
+            if (AppSettings.FirstRunDone) return;
+            AppSettings.FirstRunDone = true;
+            AppSettings.Save();
+            MessageBox.Show(
+                "Welcome to AI Audiobook Studio!\n\n" +
+                "• Open — load a TXT, PDF or EPUB (or drag one in)\n" +
+                "• Model / Voice — pick a voice (GPU engines enable the 🎤 clone button)\n" +
+                "• Preview (F6) — hear selected text\n" +
+                "• Convert (F5) — render checked chapters to audio\n" +
+                "• Menu → Voice Cast — different voices for narration vs dialogue\n" +
+                "• Menu → Settings — pauses, loudness, themes\n\n" +
+                "Tip: drag chapters in the list to reorder them.",
+                "Getting Started", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         // Gray out GPU sidecar engines in the dropdown when no Nvidia GPU is detected.
@@ -232,6 +294,54 @@ namespace TTSApp
                 return;
             }
             StepChapter(1);
+        }
+
+        // Fetch every chapter by following the site's "next" link from the current/last chapter
+        // (or a URL the user enters), until there is no next link.
+        private async void BtnFetchAll_Click(object sender, RoutedEventArgs e)
+        {
+            string? url = null;
+            if (ChaptersList.SelectedItem is ChapterItem cur && !string.IsNullOrEmpty(cur.NextUrl))
+                url = cur.NextUrl;
+            else if (_chapters.Count > 0 && !string.IsNullOrEmpty(_chapters[^1].NextUrl))
+                url = _chapters[^1].NextUrl;
+
+            if (string.IsNullOrEmpty(url))
+            {
+                url = Microsoft.VisualBasic.Interaction.InputBox(
+                    "Enter the first chapter URL to fetch all from:", "Fetch All Chapters", "");
+                if (string.IsNullOrWhiteSpace(url)) return;
+            }
+            else if (MessageBox.Show(
+                "Fetch all following chapters automatically?\n\nThis follows every \"next\" link and may take a while.",
+                "Fetch All Chapters", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var visited = new HashSet<string>();
+            int count = 0;
+            const int cap = 2000; // safety stop for sites that loop
+            BtnFetchAll.IsEnabled = false;
+            try
+            {
+                while (!string.IsNullOrEmpty(url) && visited.Add(url) && count < cap)
+                {
+                    Dispatcher.Invoke(() => TxtStatus.Text = $"Fetching all… {count + 1}");
+                    bool ok = await ImportUrlAsChapterAsync(url);
+                    if (!ok) break;
+                    url = _chapters.Count > 0 ? _chapters[^1].NextUrl : null;
+                    count++;
+                    await System.Threading.Tasks.Task.Delay(250); // be polite to the server
+                }
+            }
+            finally
+            {
+                BtnFetchAll.IsEnabled = true;
+                SetBusy(false, "Ready");
+            }
+            MessageBox.Show($"Fetched {count} chapter(s).", "Fetch All Chapters",
+                MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void StepChapter(int delta)
@@ -448,7 +558,7 @@ namespace TTSApp
             // Voice cloning only applies to GPU sidecar engines; reset it on every model switch.
             AppSettings.CloneReferencePath = null;
             ResetCloneButton();
-            BtnCloneVoice.Visibility = IsSidecarModel(newModel) ? Visibility.Visible : Visibility.Collapsed;
+            BtnCloneVoice.IsEnabled = IsSidecarModel(newModel);
 
             // GPU sidecar engine: start server off the UI thread, then fill the voice list.
             if (IsSidecarModel(newModel))
@@ -628,6 +738,68 @@ namespace TTSApp
         }
         #endregion
 
+        #region Chapter Drag-Reorder
+        private static ChapterItem? ChapterFromSource(object source)
+        {
+            var d = source as DependencyObject;
+            while (d != null && d is not ListBoxItem)
+                d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+            return (d as ListBoxItem)?.DataContext as ChapterItem;
+        }
+
+        private void ChaptersList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            _dragStartPoint = e.GetPosition(null);
+            // Don't start a drag from the checkbox (let it toggle normally).
+            if (e.OriginalSource is DependencyObject src && FindAncestor<CheckBox>(src) != null)
+            {
+                _draggedChapter = null;
+                return;
+            }
+            _draggedChapter = ChapterFromSource(e.OriginalSource);
+        }
+
+        private void ChaptersList_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed || _draggedChapter == null) return;
+            var pos = e.GetPosition(null);
+            if (Math.Abs(pos.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+                Math.Abs(pos.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+            DragDrop.DoDragDrop(ChaptersList, _draggedChapter, DragDropEffects.Move);
+        }
+
+        private void ChaptersList_Drop(object sender, DragEventArgs e)
+        {
+            // Only handle chapter reorders here; file drops fall through to Window_Drop.
+            if (!e.Data.GetDataPresent(typeof(ChapterItem))) return;
+            var dropped = (ChapterItem)e.Data.GetData(typeof(ChapterItem));
+            var target = ChapterFromSource(e.OriginalSource);
+            e.Handled = true;
+            if (dropped == null || target == null || dropped == target) return;
+
+            int from = _chapters.IndexOf(dropped);
+            int to = _chapters.IndexOf(target);
+            if (from < 0 || to < 0) return;
+
+            SaveStateForUndo();
+            _chapters.RemoveAt(from);
+            _chapters.Insert(to, dropped);
+            for (int i = 0; i < _chapters.Count; i++) _chapters[i].Index = i;
+            ChaptersList.ItemsSource = null;
+            ChaptersList.ItemsSource = _chapters;
+            ChaptersList.SelectedItem = dropped;
+            ChaptersList.ScrollIntoView(dropped);
+            ScheduleDurationRefresh();
+        }
+
+        private static T? FindAncestor<T>(DependencyObject d) where T : DependencyObject
+        {
+            while (d != null && d is not T)
+                d = System.Windows.Media.VisualTreeHelper.GetParent(d);
+            return d as T;
+        }
+        #endregion
+
         #region File Menu
         private void CommandBinding_New_Executed(object sender, ExecutedRoutedEventArgs e) => MenuNew_Click(sender, e);
         private void CommandBinding_Open_Executed(object sender, ExecutedRoutedEventArgs e) => MenuOpen_Click(sender, e);
@@ -677,6 +849,8 @@ namespace TTSApp
         private void CommandBinding_ReplaceAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuReplaceAll_Click(sender, e);
         private void CommandBinding_UndoAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuUndoAll_Click(sender, e);
         private void CommandBinding_RedoAll_Executed(object sender, ExecutedRoutedEventArgs e) => MenuRedoAll_Click(sender, e);
+        private void CommandBinding_Preview_Executed(object sender, ExecutedRoutedEventArgs e) => BtnPreview_Click(sender, e);
+        private void CommandBinding_Convert_Executed(object sender, ExecutedRoutedEventArgs e) => BtnConvert_Click(sender, e);
 
         private void MenuCut_Click(object sender, RoutedEventArgs e) => TxtPreview.Cut();
         private void MenuCopy_Click(object sender, RoutedEventArgs e) => TxtPreview.Copy();
@@ -789,6 +963,19 @@ namespace TTSApp
         private void MenuVoiceCast_Click(object sender, RoutedEventArgs e)
         {
             new VoiceCastWindow { Owner = this }.ShowDialog();
+        }
+
+        // #9 — open the last-used output folder in Explorer.
+        private void BtnOpenOutput_Click(object sender, RoutedEventArgs e)
+        {
+            string? dir = AppSettings.LastOutputDir;
+            if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
+            {
+                MessageBox.Show("No output folder yet. Convert something first.", "Output Folder",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            try { System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\""); } catch { /* ignore */ }
         }
         #endregion
 
@@ -1179,9 +1366,19 @@ namespace TTSApp
 
             await Task.Run(() =>
             {
+                var castOwned = new List<ITtsEngine>();
                 try
                 {
-                    _ttsEngine.Generate(textToPreview, speakerId, speed, tempFile);
+                    if (AppSettings.CastEnabled)
+                    {
+                        Dispatcher.Invoke(() => TxtStatus.Text = "Voice Cast: loading engines...");
+                        var (n, d) = BuildCastRoles(castOwned);
+                        VoiceCast.Render(textToPreview, speed, tempFile, n, d);
+                    }
+                    else
+                    {
+                        _ttsEngine.Generate(textToPreview, speakerId, speed, tempFile);
+                    }
                     Dispatcher.Invoke(() =>
                     {
                         TxtStatus.Text = "Playing preview...";
@@ -1197,6 +1394,7 @@ namespace TTSApp
                 }
                 finally
                 {
+                    foreach (var ce in castOwned) { try { ce.Dispose(); } catch { } }
                     Dispatcher.Invoke(() =>
                     {
                         BtnPreview.IsEnabled = true;
@@ -1264,7 +1462,7 @@ namespace TTSApp
             {
                 _convertCts.Cancel();
                 BtnConvert.IsEnabled = false;
-                TxtStatus.Text = "Cancelling after current chapter...";
+                TxtStatus.Text = "Cancelling...";
                 return;
             }
 
@@ -1366,6 +1564,27 @@ namespace TTSApp
             _convertCts = new CancellationTokenSource();
             var token = _convertCts.Token;
 
+            // #10 — resume: offer to skip chapters already converted this session (per-file mode only).
+            if (!merge)
+            {
+                int doneCount = selected.Count(c => c.Status == ConvertState.Done);
+                if (doneCount > 0)
+                {
+                    var resume = MessageBox.Show(
+                        $"{doneCount} of {selected.Count} selected chapter(s) are already converted.\n\n" +
+                        "Skip them and convert only the remaining chapters?",
+                        "Resume Conversion", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                    if (resume == MessageBoxResult.Cancel) return;
+                    if (resume == MessageBoxResult.Yes)
+                        selected = selected.Where(c => c.Status != ConvertState.Done).ToList();
+                }
+                if (selected.Count == 0)
+                {
+                    MessageBox.Show("Nothing left to convert.", "Resume", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+            }
+
             SetBusy(true, "Converting...");
             BtnBrowse.IsEnabled = false;
             BtnConvert.IsEnabled = true;        // stays clickable as a Cancel button
@@ -1373,6 +1592,9 @@ namespace TTSApp
             ProgressBar.Maximum = selected.Count;
             ProgressBar.Value = 0;
             foreach (var ch in selected) ch.Status = ConvertState.Queued;
+
+            // #3 — elapsed timer drives the ETA shown during conversion.
+            var convertSw = System.Diagnostics.Stopwatch.StartNew();
 
             int speakerId = CmbVoice.SelectedIndex;
             float speed = (float)SliderSpeed.Value;
@@ -1431,7 +1653,14 @@ namespace TTSApp
                         Dispatcher.Invoke(() =>
                         {
                             _isUpdatingText = true;
-                            TxtStatus.Text = $"Converting {i + 1} of {selected.Count}: {chapter.Title}";
+                            string eta = "";
+                            if (i > 0)
+                            {
+                                double perChapter = convertSw.Elapsed.TotalSeconds / i;
+                                var remaining = TimeSpan.FromSeconds(perChapter * (selected.Count - i));
+                                eta = $"  ·  ~{DurationEstimator.FormatFriendly(remaining)} left";
+                            }
+                            TxtStatus.Text = $"Converting {i + 1} of {selected.Count}: {chapter.Title}{eta}";
                             TxtChapterTitle.Text = $"🔊 {chapter.Title}";
                             TxtPreview.Text = text.Length > 4000 ? text.Substring(0, 4000) + "\n\n..." : text;
                             ProgressBar.Value = i;
@@ -1444,9 +1673,11 @@ namespace TTSApp
                         // #19 — use the chapter's voice override if set, else the global voice.
                         int chapterVoice = chapter.VoiceOverride >= 0 ? chapter.VoiceOverride : speakerId;
                         if (castNarrator != null && castDialogue != null)
-                            VoiceCast.Render(text, speed, outputFile, castNarrator, castDialogue);
+                            VoiceCast.Render(text, speed, outputFile, castNarrator, castDialogue, token);
                         else
                             _ttsEngine.Generate(text, chapterVoice, speed, outputFile);
+
+                        if (token.IsCancellationRequested) break;
 
                         // Per-chapter: trim always; normalize per-chapter only when NOT merging
                         // (merged output is normalized once as a whole below).
@@ -1694,6 +1925,8 @@ namespace TTSApp
         {
             _autoSaveTimer?.Stop();
             SaveAutoSave();
+            SaveWindowPlacement();
+            AppSettings.Save();
             _miniPlayer?.Close();
             StopPlayback();
             base.OnClosing(e);

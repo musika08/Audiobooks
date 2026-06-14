@@ -21,6 +21,8 @@
         <KeyBinding Key="F" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Find}"/>
         <KeyBinding Key="H" Modifiers="Ctrl" Command="{x:Static ApplicationCommands.Replace}"/>
         <KeyBinding Key="H" Modifiers="Ctrl+Shift" Command="{x:Static local:MainWindow.ReplaceAllCommand}"/>
+        <KeyBinding Key="F6" Command="{x:Static local:MainWindow.PreviewCommand}"/>
+        <KeyBinding Key="F5" Command="{x:Static local:MainWindow.ConvertCommand}"/>
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Open}" Executed="CommandBinding_Open_Executed"/>
@@ -33,6 +35,8 @@
         <CommandBinding Command="{x:Static local:MainWindow.UndoAllCommand}" Executed="CommandBinding_UndoAll_Executed"/>
         <CommandBinding Command="{x:Static local:MainWindow.RedoAllCommand}" Executed="CommandBinding_RedoAll_Executed"/>
         <CommandBinding Command="{x:Static local:MainWindow.ReplaceAllCommand}" Executed="CommandBinding_ReplaceAll_Executed"/>
+        <CommandBinding Command="{x:Static local:MainWindow.PreviewCommand}" Executed="CommandBinding_Preview_Executed"/>
+        <CommandBinding Command="{x:Static local:MainWindow.ConvertCommand}" Executed="CommandBinding_Convert_Executed"/>
     </Window.CommandBindings>
     <Grid>
         <Grid.RowDefinitions>
@@ -44,7 +48,14 @@
 
         <!-- MENU BAR -->
         <Menu Grid.Row="0" Background="{DynamicResource BrushMenuBg}" Foreground="{DynamicResource BrushTextPrimary}">
-            <MenuItem Header="_File">
+            <Menu.Resources>
+                <!-- Top-level headers only: center text within the highlight box -->
+                <Style x:Key="TopMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="Padding" Value="12,4"/>
+                </Style>
+            </Menu.Resources>
+            <MenuItem Header="_File" Style="{StaticResource TopMenuItem}">
                 <MenuItem Header="_New Project" Click="MenuNew_Click" InputGestureText="Ctrl+N"/>
                 <MenuItem Header="_Open..." Click="MenuOpen_Click" InputGestureText="Ctrl+O"/>
                 <Separator/>
@@ -63,7 +74,7 @@
                 <Separator/>
                 <MenuItem Header="E_xit" Click="MenuExit_Click"/>
             </MenuItem>
-            <MenuItem Header="_Edit">
+            <MenuItem Header="_Edit" Style="{StaticResource TopMenuItem}">
                 <MenuItem Header="_Undo" Click="MenuUndo_Click" InputGestureText="Ctrl+Z"/>
                 <MenuItem Header="Undo _All" Click="MenuUndoAll_Click" InputGestureText="Ctrl+Shift+Z"/>
                 <MenuItem Header="_Redo" Click="MenuRedo_Click" InputGestureText="Ctrl+Y"/>
@@ -77,7 +88,7 @@
                 <MenuItem Header="_Replace..." Click="MenuReplace_Click" InputGestureText="Ctrl+H"/>
                 <MenuItem Header="Replace A_ll..." Click="MenuReplaceAll_Click" InputGestureText="Ctrl+Shift+H"/>
             </MenuItem>
-            <MenuItem Header="_View">
+            <MenuItem Header="_View" Style="{StaticResource TopMenuItem}">
                 <MenuItem Header="_Mini Player" Click="MenuMiniPlayer_Click"/>
                 <Separator/>
                 <MenuItem Header="_Theme">
@@ -86,124 +97,39 @@
                     <MenuItem Header="_Midnight" x:Name="MenuThemeMidnight" IsCheckable="True" Checked="MenuTheme_Checked"/>
                 </MenuItem>
             </MenuItem>
-            <MenuItem Header="_Dictionary" Click="MenuDictionary_Click"/>
-            <MenuItem Header="_Voice Tuning" Click="MenuVoiceTuning_Click"/>
-            <MenuItem Header="Voice _Cast" Click="MenuVoiceCast_Click"/>
-            <MenuItem Header="_Settings" Click="MenuSettings_Click"/>
+            <MenuItem Header="_Dictionary" Click="MenuDictionary_Click" Style="{StaticResource TopMenuItem}"/>
+            <MenuItem Header="_Voice Tuning" Click="MenuVoiceTuning_Click" Style="{StaticResource TopMenuItem}"/>
+            <MenuItem Header="Voice _Cast" Click="MenuVoiceCast_Click" Style="{StaticResource TopMenuItem}"/>
+            <MenuItem Header="_Settings" Click="MenuSettings_Click" Style="{StaticResource TopMenuItem}"/>
         </Menu>
 
         <!-- TOOLBAR -->
         <Border Grid.Row="1" Background="{DynamicResource BrushPanelBg}" Padding="14,10"
                 BorderBrush="{DynamicResource BrushBorder}" BorderThickness="0,0,0,1">
-            <Grid VerticalAlignment="Center">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <!-- Responsive toolbar: Open + file pinned left, actions pinned right, settings wrap in the
+                 middle so nothing clips when the window narrows. -->
+            <DockPanel LastChildFill="True">
 
-                <!-- Col 0: Open button -->
-                <Button Grid.Column="0" x:Name="BtnBrowse" Width="96" Height="34"
-                        Background="{DynamicResource BrushAccentBlue}" Foreground="White" FontSize="13"
-                        Click="BtnBrowse_Click">
-                    <StackPanel Orientation="Horizontal">
-                        <Viewbox Width="16" Height="16" Margin="0,0,7,0">
-                            <Path Style="{StaticResource LucideIcon}" Stroke="White" Data="{StaticResource GeoFolderOpen}"/>
-                        </Viewbox>
-                        <TextBlock Text="Open" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
-
-                <!-- Col 1: File path -->
-                <TextBlock Grid.Column="1" x:Name="TxtFilePath" Text="No file selected"
-                           VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}"
-                           FontSize="12" Margin="12,0,0,0"
-                           TextTrimming="CharacterEllipsis" MaxWidth="260"/>
-
-                <!-- Col 2: Settings (center) -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-
-                    <!-- Model -->
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <TextBlock Text="MODEL" Foreground="{DynamicResource BrushTextMuted}"
-                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
-                        <ComboBox x:Name="CmbModel" Width="160" Height="32" FontSize="12"
-                                  SelectionChanged="CmbModel_SelectionChanged">
-                            <ComboBoxItem Tag="kokoro-multi-lang-v1_0">Kokoro Multi-Lang v1.0</ComboBoxItem>
-                            <ComboBoxItem Tag="kokoro-multi-lang-v1_1">Kokoro Multi-Lang v1.1</ComboBoxItem>
-                            <ComboBoxItem Tag="xtts-v2">XTTS v2 (GPU)</ComboBoxItem>
-                            <ComboBoxItem Tag="chatterbox">Chatterbox (GPU)</ComboBoxItem>
-                            <ComboBoxItem Tag="vibevoice">VibeVoice (GPU, experimental)</ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <!-- Voice -->
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <TextBlock Text="VOICE" Foreground="{DynamicResource BrushTextMuted}"
-                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
-                        <StackPanel Orientation="Horizontal" Height="32">
-                            <ComboBox x:Name="CmbVoice" Width="140" Height="32" FontSize="12" VerticalAlignment="Center"/>
-                            <Button x:Name="BtnCloneVoice" Width="32" Height="32" Margin="4,0,0,0"
-                                    Visibility="Collapsed"
-                                    Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
-                                    Click="BtnCloneVoice_Click" ToolTip="Clone voice from an audio file (GPU engines)">
-                                <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoMic}"/></Viewbox>
-                            </Button>
+                <!-- Left: Open + file path -->
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <Button x:Name="BtnBrowse" Width="96" Height="34"
+                            Background="{DynamicResource BrushAccentBlue}" Foreground="White" FontSize="13"
+                            Click="BtnBrowse_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Width="16" Height="16" Margin="0,0,7,0">
+                                <Path Style="{StaticResource LucideIcon}" Stroke="White" Data="{StaticResource GeoFolderOpen}"/>
+                            </Viewbox>
+                            <TextBlock Text="Open" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </StackPanel>
-
-                    <!-- Speed -->
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <TextBlock Text="SPEED" Foreground="{DynamicResource BrushTextMuted}"
-                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Height="32">
-                            <Slider x:Name="SliderSpeed" Width="90" VerticalAlignment="Center"
-                                    Minimum="0.5" Maximum="2.0" Value="1.0" TickFrequency="0.1"/>
-                            <Border Background="{DynamicResource BrushPanelBgAlt}" CornerRadius="4"
-                                    Padding="6,0" Margin="6,0,0,0" Width="42" Height="32">
-                                <TextBlock x:Name="LblSpeed" Text="1.0x"
-                                           Foreground="{DynamicResource BrushTextPrimary}"
-                                           VerticalAlignment="Center" HorizontalAlignment="Center"
-                                           FontSize="12"/>
-                            </Border>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Format -->
-                    <StackPanel Orientation="Vertical" Margin="0,0,12,0">
-                        <TextBlock Text="FORMAT" Foreground="{DynamicResource BrushTextMuted}"
-                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
-                        <ComboBox x:Name="CmbFormat" Width="88" Height="32" FontSize="12" SelectedIndex="1">
-                            <ComboBoxItem>WAV</ComboBoxItem>
-                            <ComboBoxItem>MP3</ComboBoxItem>
-                            <ComboBoxItem>M4B</ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
-
-                    <!-- Provider -->
-                    <StackPanel Orientation="Vertical">
-                        <TextBlock Text="PROVIDER" Foreground="{DynamicResource BrushTextMuted}"
-                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
-                        <ComboBox x:Name="CmbProvider" Width="110" Height="32" FontSize="12" SelectedIndex="0">
-                            <ComboBoxItem>CPU</ComboBoxItem>
-                            <ComboBoxItem>CUDA</ComboBoxItem>
-                            <ComboBoxItem>DirectML</ComboBoxItem>
-                        </ComboBox>
-                    </StackPanel>
+                    </Button>
+                    <TextBlock x:Name="TxtFilePath" Text="No file selected"
+                               VerticalAlignment="Center" Foreground="{DynamicResource BrushTextSecondary}"
+                               FontSize="12" Margin="12,0,0,0"
+                               TextTrimming="CharacterEllipsis" MaxWidth="200"/>
                 </StackPanel>
 
-                <!-- Col 3: Merge toggle -->
-                <StackPanel Grid.Column="3" Orientation="Vertical" Margin="12,0,12,0" VerticalAlignment="Center">
-                    <TextBlock Text="MERGE" Foreground="{DynamicResource BrushTextMuted}"
-                               FontSize="9" FontWeight="Bold" Margin="0,0,0,6" HorizontalAlignment="Center"/>
-                    <CheckBox x:Name="ChkMerge" VerticalAlignment="Center" HorizontalAlignment="Center"
-                              Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"/>
-                </StackPanel>
-
-                <!-- Col 4: Action buttons -->
-                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Right: action buttons (always visible) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <Button x:Name="BtnPreview" Width="106" Height="34"
                             Background="{DynamicResource BrushAccentPurple}" Foreground="White" FontSize="13"
                             Click="BtnPreview_Click" Margin="0,0,8,0">
@@ -225,7 +151,89 @@
                         </StackPanel>
                     </Button>
                 </StackPanel>
-            </Grid>
+
+                <!-- Center: settings that wrap to a second line when space is tight -->
+                <WrapPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+
+                    <!-- Model -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,16,3">
+                        <TextBlock Text="MODEL" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
+                        <ComboBox x:Name="CmbModel" Width="160" Height="32" FontSize="12"
+                                  SelectionChanged="CmbModel_SelectionChanged">
+                            <ComboBoxItem Tag="kokoro-multi-lang-v1_0">Kokoro Multi-Lang v1.0</ComboBoxItem>
+                            <ComboBoxItem Tag="kokoro-multi-lang-v1_1">Kokoro Multi-Lang v1.1</ComboBoxItem>
+                            <ComboBoxItem Tag="xtts-v2">XTTS v2 (GPU)</ComboBoxItem>
+                            <ComboBoxItem Tag="chatterbox">Chatterbox (GPU)</ComboBoxItem>
+                            <ComboBoxItem Tag="vibevoice">VibeVoice (GPU, experimental)</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Voice -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,16,3">
+                        <TextBlock Text="VOICE" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
+                        <StackPanel Orientation="Horizontal" Height="32">
+                            <ComboBox x:Name="CmbVoice" Width="140" Height="32" FontSize="12" VerticalAlignment="Center"/>
+                            <Button x:Name="BtnCloneVoice" Width="38" Height="32" Margin="4,0,0,0"
+                                    IsEnabled="False"
+                                    Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
+                                    Click="BtnCloneVoice_Click" ToolTip="Clone voice from an audio file (GPU engines only)">
+                                <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoMic}"/></Viewbox>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Speed -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,16,3">
+                        <TextBlock Text="SPEED" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Height="32">
+                            <Slider x:Name="SliderSpeed" Width="90" VerticalAlignment="Center"
+                                    Minimum="0.5" Maximum="2.0" Value="1.0" TickFrequency="0.1"/>
+                            <Border Background="{DynamicResource BrushPanelBgAlt}" CornerRadius="4"
+                                    Padding="6,0" Margin="6,0,0,0" Width="42" Height="32">
+                                <TextBlock x:Name="LblSpeed" Text="1.0x"
+                                           Foreground="{DynamicResource BrushTextPrimary}"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                                           FontSize="12"/>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Format -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,16,3">
+                        <TextBlock Text="FORMAT" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
+                        <ComboBox x:Name="CmbFormat" Width="88" Height="32" FontSize="12" SelectedIndex="1">
+                            <ComboBoxItem>WAV</ComboBoxItem>
+                            <ComboBoxItem>MP3</ComboBoxItem>
+                            <ComboBoxItem>M4B</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Provider -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,16,3">
+                        <TextBlock Text="PROVIDER" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3"/>
+                        <ComboBox x:Name="CmbProvider" Width="110" Height="32" FontSize="12" SelectedIndex="0">
+                            <ComboBoxItem>CPU</ComboBoxItem>
+                            <ComboBoxItem>CUDA</ComboBoxItem>
+                            <ComboBoxItem>DirectML</ComboBoxItem>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Merge -->
+                    <StackPanel Orientation="Vertical" Margin="0,3,0,3">
+                        <TextBlock Text="MERGE" Foreground="{DynamicResource BrushTextMuted}"
+                                   FontSize="9" FontWeight="Bold" Margin="0,0,0,3" HorizontalAlignment="Center"/>
+                        <Border Height="32">
+                            <CheckBox x:Name="ChkMerge" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                      Foreground="{DynamicResource BrushTextSecondary}" FontSize="12"/>
+                        </Border>
+                    </StackPanel>
+                </WrapPanel>
+            </DockPanel>
         </Border>
 
         <!-- MAIN CONTENT -->
@@ -237,6 +245,9 @@
 
             <!-- LEFT: Chapters -->
             <Border Grid.Column="0" Background="{DynamicResource BrushPanelBg}" CornerRadius="12" Padding="14" Margin="0,0,10,0">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="0" Opacity="0.45"/>
+                </Border.Effect>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -251,27 +262,33 @@
                                Foreground="{DynamicResource BrushTextPrimary}" Margin="0,0,0,8"/>
 
                     <UniformGrid Grid.Row="1" Columns="6" Margin="0,0,0,8">
-                        <Button x:Name="BtnSelectAll" Height="26" Margin="0,0,4,0"
+                        <Button x:Name="BtnSelectAll" Height="32" Padding="0" Margin="0,0,4,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnSelectAll_Click" ToolTip="Select all chapters">
                             <Viewbox Width="16" Height="16"><Path Stroke="#3FB950" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="{x:Null}" Data="{StaticResource GeoCheck}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnSelectNone" Height="26" Margin="0,0,4,0"
+                        <Button x:Name="BtnSelectNone" Height="32" Padding="0" Margin="0,0,4,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnSelectNone_Click" ToolTip="Deselect all chapters">
                             <Viewbox Width="15" Height="15"><Path Stroke="#F85149" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Fill="{x:Null}" Data="{StaticResource GeoX}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnAddChapter" Height="26" Margin="0,0,4,0"
+                        <Button x:Name="BtnAddChapter" Height="32" Padding="0" Margin="0,0,4,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnAddChapter_Click" ToolTip="Add chapter">
                             <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoPlus}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnMoveUp" Height="26" Margin="0,0,4,0"
+                        <Button x:Name="BtnMoveUp" Height="32" Padding="0" Margin="0,0,4,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnMoveUp_Click" ToolTip="Move chapter up">
                             <Viewbox Width="13" Height="13"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriUp}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnMoveDown" Height="26" Margin="0,0,4,0"
+                        <Button x:Name="BtnMoveDown" Height="32" Padding="0" Margin="0,0,4,0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnMoveDown_Click" ToolTip="Move chapter down">
                             <Viewbox Width="13" Height="13"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriDown}"/></Viewbox>
                         </Button>
-                        <Button x:Name="BtnDeleteChapter" Height="26"
+                        <Button x:Name="BtnDeleteChapter" Height="32" Padding="0"
+                                HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                 Background="{DynamicResource BrushButtonBg}" Click="BtnDeleteChapter_Click" ToolTip="Delete chapter">
                             <Viewbox Width="15" Height="15"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoTrash}"/></Viewbox>
                         </Button>
@@ -286,7 +303,11 @@
                     <Border Grid.Row="3" Background="{DynamicResource BrushPanelBgAlt}" CornerRadius="10" Padding="2">
                         <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ListBox x:Name="ChaptersList" Background="Transparent" BorderThickness="0"
-                                     SelectionChanged="ChaptersList_SelectionChanged">
+                                     SelectionChanged="ChaptersList_SelectionChanged"
+                                     AllowDrop="True"
+                                     PreviewMouseLeftButtonDown="ChaptersList_PreviewMouseLeftButtonDown"
+                                     MouseMove="ChaptersList_MouseMove"
+                                     Drop="ChaptersList_Drop">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <StackPanel Orientation="Horizontal">
@@ -304,9 +325,33 @@
                                                        Foreground="{DynamicResource BrushTextPrimary}"
                                                        TextTrimming="CharacterEllipsis"
                                                        FontSize="12" MaxWidth="165" ToolTip="{Binding Title}"/>
-                                            <TextBlock Text="{Binding StatusGlyph}" VerticalAlignment="Center"
-                                                       Foreground="{DynamicResource BrushAccentGreen}"
-                                                       FontSize="12" FontWeight="Bold" Margin="6,0,0,0"/>
+                                            <Border CornerRadius="8" Padding="6,1" Margin="6,0,0,0"
+                                                    VerticalAlignment="Center" Visibility="Collapsed">
+                                                <TextBlock Text="{Binding StatusGlyph}" Foreground="White"
+                                                           FontSize="10" FontWeight="Bold"/>
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Done">
+                                                                <Setter Property="Background" Value="{DynamicResource BrushAccentGreen}"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Converting">
+                                                                <Setter Property="Background" Value="{DynamicResource BrushAccentBlue}"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Queued">
+                                                                <Setter Property="Background" Value="{DynamicResource BrushTextMuted}"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                                                <Setter Property="Background" Value="#F85149"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
                                         </StackPanel>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -361,6 +406,9 @@
 
             <!-- RIGHT: Content -->
             <Border Grid.Column="1" Background="{DynamicResource BrushPanelBg}" CornerRadius="12" Padding="16">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="20" ShadowDepth="0" Opacity="0.45"/>
+                </Border.Effect>
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -382,10 +430,15 @@
                                     Click="BtnPrevChapter_Click" ToolTip="Previous chapter">
                                 <Viewbox Width="18" Height="18"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriLeft}"/></Viewbox>
                             </Button>
-                            <Button x:Name="BtnNextChapter" Width="38" Height="32" Margin="0,0,10,0"
+                            <Button x:Name="BtnNextChapter" Width="38" Height="32" Margin="0,0,5,0"
                                     Background="{DynamicResource BrushButtonBg}"
                                     Click="BtnNextChapter_Click" ToolTip="Next chapter (fetches next web page if imported from URL)">
                                 <Viewbox Width="18" Height="18"><Path Fill="{DynamicResource BrushTextPrimary}" Data="{StaticResource GeoTriRight}"/></Viewbox>
+                            </Button>
+                            <Button x:Name="BtnFetchAll" Width="52" Height="32" Margin="0,0,10,0"
+                                    Background="{DynamicResource BrushButtonBg}"
+                                    Click="BtnFetchAll_Click" ToolTip="Fetch all chapters from the URL automatically (follows every &quot;next&quot; link)">
+                                <Viewbox Width="18" Height="18"><Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoChevronsRight}"/></Viewbox>
                             </Button>
                             <Button x:Name="BtnTidy" Width="38" Height="32" Margin="0,0,5,0"
                                     Background="{DynamicResource BrushButtonBg}"
@@ -472,9 +525,26 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" x:Name="TxtStatus" Text="Ready"
-                           Foreground="{DynamicResource BrushTextSecondary}"
-                           FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,0,0,5"/>
+                <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" x:Name="TxtStatus" Text="Ready"
+                               Foreground="{DynamicResource BrushTextSecondary}"
+                               FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" x:Name="BtnOpenOutput" Height="26" Padding="10,2"
+                            Background="{DynamicResource BrushButtonBg}" Foreground="{DynamicResource BrushTextPrimary}"
+                            FontSize="11" Click="BtnOpenOutput_Click"
+                            ToolTip="Open the last output folder">
+                        <StackPanel Orientation="Horizontal">
+                            <Viewbox Width="14" Height="14" Margin="0,0,6,0">
+                                <Path Style="{StaticResource LucideIcon}" Data="{StaticResource GeoFolderOpen}"/>
+                            </Viewbox>
+                            <TextBlock Text="Output folder" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </Grid>
                 <Grid Grid.Row="1">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>

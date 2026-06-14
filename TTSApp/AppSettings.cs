@@ -67,6 +67,15 @@ namespace TTSApp
         public static double VoiceCfgScale { get; set; } = 1.3;           // VibeVoice
         // Named, reusable cloned-voice reference clips (copied into the app's voices folder).
         public static List<SavedVoice> SavedVoices { get; set; } = new();
+
+        // Window placement (restored on launch). 0/NaN sentinels = use defaults.
+        public static double WindowWidth { get; set; } = 0;
+        public static double WindowHeight { get; set; } = 0;
+        public static double WindowLeft { get; set; } = double.NaN;
+        public static double WindowTop { get; set; } = double.NaN;
+        public static bool WindowMaximized { get; set; } = false;
+        // One-time onboarding tips shown on first launch.
+        public static bool FirstRunDone { get; set; } = false;
         public static string VoicesDir => Path.Combine(SettingsDir, "voices");
         public static Dictionary<string, string> PronunciationDict { get; set; } = new();
 
@@ -120,6 +129,12 @@ namespace TTSApp
                         OutroAudioPath = data.OutroAudioPath;
                         BackgroundAudioPath = data.BackgroundAudioPath;
                         BackgroundVolumePercent = data.BackgroundVolumePercent;
+                        WindowWidth = data.WindowWidth;
+                        WindowHeight = data.WindowHeight;
+                        WindowLeft = data.WindowLeft;
+                        WindowTop = data.WindowTop;
+                        WindowMaximized = data.WindowMaximized;
+                        FirstRunDone = data.FirstRunDone;
                     }
                 }
                 if (File.Exists(DictPath))
@@ -178,7 +193,13 @@ namespace TTSApp
                     IntroAudioPath = IntroAudioPath,
                     OutroAudioPath = OutroAudioPath,
                     BackgroundAudioPath = BackgroundAudioPath,
-                    BackgroundVolumePercent = BackgroundVolumePercent
+                    BackgroundVolumePercent = BackgroundVolumePercent,
+                    WindowWidth = WindowWidth,
+                    WindowHeight = WindowHeight,
+                    WindowLeft = WindowLeft,
+                    WindowTop = WindowTop,
+                    WindowMaximized = WindowMaximized,
+                    FirstRunDone = FirstRunDone
                 };
                 File.WriteAllText(SettingsPath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
                 File.WriteAllText(DictPath, JsonSerializer.Serialize(PronunciationDict, new JsonSerializerOptions { WriteIndented = true }));
@@ -240,6 +261,12 @@ namespace TTSApp
             public string? BackgroundAudioPath { get; set; }
             public int BackgroundVolumePercent { get; set; } = 15;
             public List<SavedVoice>? SavedVoices { get; set; }
+            public double WindowWidth { get; set; } = 0;
+            public double WindowHeight { get; set; } = 0;
+            public double WindowLeft { get; set; } = double.NaN;
+            public double WindowTop { get; set; } = double.NaN;
+            public bool WindowMaximized { get; set; } = false;
+            public bool FirstRunDone { get; set; } = false;
         }
     }
 

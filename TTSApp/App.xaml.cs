@@ -24,63 +24,63 @@ namespace TTSApp
 
             if (themeName == "Light")
             {
-                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(240, 240, 240));
-                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(255, 255, 255));
-                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(245, 245, 245));
-                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(30, 30, 30));
-                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(80, 80, 80));
-                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(120, 120, 120));
-                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(200, 200, 200));
-                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(0, 120, 212));
-                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(16, 124, 16));
-                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(106, 13, 173));
-                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(230, 230, 230));
-                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(220, 220, 220));
-                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(200, 220, 255));
-                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(240, 240, 240));
-                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(250, 250, 250));
+                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(244, 244, 245));   // zinc-100
+                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(255, 255, 255));     // white card
+                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(250, 250, 251));
+                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(24, 24, 27));
+                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(82, 82, 91));   // zinc-600
+                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(113, 113, 122));    // zinc-500
+                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(228, 228, 231));       // zinc-200
+                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(37, 99, 235));     // blue-600
+                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(22, 163, 74));    // green-600
+                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(124, 58, 237));  // violet-600
+                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(244, 244, 245));
+                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(228, 228, 231));
+                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(220, 252, 231)); // green tint
+                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(244, 244, 245));
+                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(255, 255, 255));
                 resources["BrushDropdownBg"] = new SolidColorBrush(Color.FromRgb(255, 255, 255));
-                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(220, 220, 220));
+                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(244, 244, 245));
             }
             else if (themeName == "Midnight")
             {
-                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(10, 10, 20));
-                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(20, 20, 40));
-                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(15, 15, 30));
-                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(220, 220, 255));
-                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(160, 160, 200));
-                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(100, 100, 140));
-                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(40, 40, 60));
-                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(80, 160, 255));
-                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(20, 180, 80));
-                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(160, 100, 255));
-                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(35, 35, 55));
-                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(45, 45, 70));
-                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(40, 60, 100));
-                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(30, 30, 50));
-                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(18, 18, 35));
-                resources["BrushDropdownBg"] = new SolidColorBrush(Color.FromRgb(25, 25, 45));
-                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(40, 40, 65));
+                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(8, 11, 22));         // deep navy-black
+                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(17, 22, 41));         // elevated navy card
+                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(12, 16, 31));
+                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(226, 232, 255));
+                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(148, 163, 199));
+                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(100, 116, 152));
+                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(30, 39, 66));
+                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(96, 165, 250));
+                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(34, 197, 94));
+                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(167, 139, 250));
+                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(28, 36, 60));
+                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(38, 48, 78));
+                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(30, 45, 75));
+                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(20, 27, 48));
+                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(12, 16, 31));
+                resources["BrushDropdownBg"] = new SolidColorBrush(Color.FromRgb(17, 22, 41));
+                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(30, 39, 66));
             }
-            else // Dark
+            else // Dark — near-black surfaces, elevated charcoal cards, vibrant green accent
             {
-                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(26, 26, 26));
-                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(45, 45, 45));
-                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(37, 37, 37));
-                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(255, 255, 255));
-                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(170, 170, 170));
-                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(136, 136, 136));
-                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(51, 51, 51));
-                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(0, 120, 212));
-                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(16, 124, 16));
-                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(106, 13, 173));
-                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(74, 74, 74));
-                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(85, 85, 85));
-                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(61, 90, 128));
-                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(53, 53, 53));
-                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(37, 37, 37));
-                resources["BrushDropdownBg"] = new SolidColorBrush(Color.FromRgb(50, 50, 50));
-                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(65, 65, 65));
+                resources["BrushWindowBg"] = new SolidColorBrush(Color.FromRgb(10, 10, 11));      // near-black
+                resources["BrushPanelBg"] = new SolidColorBrush(Color.FromRgb(24, 24, 27));        // elevated card (zinc-900)
+                resources["BrushPanelBgAlt"] = new SolidColorBrush(Color.FromRgb(18, 18, 20));     // recessed surface
+                resources["BrushTextPrimary"] = new SolidColorBrush(Color.FromRgb(250, 250, 250));
+                resources["BrushTextSecondary"] = new SolidColorBrush(Color.FromRgb(161, 161, 170)); // zinc-400
+                resources["BrushTextMuted"] = new SolidColorBrush(Color.FromRgb(113, 113, 122));   // zinc-500
+                resources["BrushBorder"] = new SolidColorBrush(Color.FromRgb(39, 39, 42));         // zinc-800
+                resources["BrushAccentBlue"] = new SolidColorBrush(Color.FromRgb(59, 130, 246));   // blue-500
+                resources["BrushAccentGreen"] = new SolidColorBrush(Color.FromRgb(34, 197, 94));   // emerald-500 (image)
+                resources["BrushAccentPurple"] = new SolidColorBrush(Color.FromRgb(139, 92, 246)); // violet-500
+                resources["BrushButtonBg"] = new SolidColorBrush(Color.FromRgb(39, 39, 42));       // subtle chip
+                resources["BrushButtonHover"] = new SolidColorBrush(Color.FromRgb(63, 63, 70));
+                resources["BrushListSelected"] = new SolidColorBrush(Color.FromRgb(39, 39, 46));
+                resources["BrushListHover"] = new SolidColorBrush(Color.FromRgb(30, 30, 33));
+                resources["BrushMenuBg"] = new SolidColorBrush(Color.FromRgb(16, 16, 18));
+                resources["BrushDropdownBg"] = new SolidColorBrush(Color.FromRgb(24, 24, 27));
+                resources["BrushDropdownHover"] = new SolidColorBrush(Color.FromRgb(39, 39, 42));
             }
         }
     }

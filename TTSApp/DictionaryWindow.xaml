@@ -86,7 +86,7 @@
                 <Button Content="Export…" Width="80" Height="32" Click="BtnExport_Click"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Remove Selected" Width="110" Height="32" Margin="0,0,10,0" Click="BtnRemove_Click"/>
+                <Button Content="Remove Selected" Width="135" Height="32" Margin="0,0,10,0" Click="BtnRemove_Click"/>
                 <Button Content="Close" Width="80" Height="32" Click="BtnClose_Click"/>
             </StackPanel>
         </Grid>
