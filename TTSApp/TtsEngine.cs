@@ -353,10 +353,23 @@ namespace TTSApp
             var audio = _tts!.Generate(text, speed, speakerId);
             if (audio == null) return;
 
-            // Sherpa returns an object with no samples when generation produced nothing (e.g. an
-            // unavailable provider or an out-of-range speaker id); SaveToWaveFile then NREs inside
-            // the native binding. Skip those instead of crashing the whole render.
-            if (audio.Samples == null || audio.Samples.Length == 0)
+            // A misconfigured engine (missing model files, bad provider, out-of-range speaker)
+            // yields an audio object whose native handle is null; touching Samples/SaveToWaveFile
+            // then throws inside the binding. Treat any such failure as "no audio" for this
+            // segment instead of crashing the whole render.
+            float[]? samples;
+            try
+            {
+                samples = audio.Samples;
+            }
+            catch (Exception ex)
+            {
+                Logging.Log.Error(ex, $"TTS generation returned an invalid result (speaker {speakerId}); skipping segment.");
+                try { audio.Dispose(); } catch { }
+                return;
+            }
+
+            if (samples == null || samples.Length == 0)
             {
                 Logging.Log.Warn($"TTS produced no audio for a segment (speaker {speakerId}); skipping.");
                 audio.Dispose();

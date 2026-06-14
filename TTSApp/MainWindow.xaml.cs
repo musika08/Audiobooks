@@ -459,6 +459,14 @@ namespace TTSApp
                     eng = _ttsEngine;
                 else
                 {
+                    // Kokoro roles need their model on disk; the main app only downloads the
+                    // selected model, so a cast role using a different (or never-used) Kokoro
+                    // model would otherwise load a broken engine and crash on generate.
+                    if (!TtsEngineFactory.IsSidecarModel(model) && !ModelDownloader.IsModelReady(model))
+                    {
+                        Dispatcher.Invoke(() => TxtStatus.Text = $"Voice Cast: downloading {model}...");
+                        ModelDownloader.DownloadModelAsync(model, new Progress<double>()).GetAwaiter().GetResult();
+                    }
                     eng = TtsEngineFactory.CreateEngine(model);
                     eng.Initialize(TtsEngineFactory.ProviderFor(model, providerIndex));
                     owned.Add(eng);
