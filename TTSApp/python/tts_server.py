@@ -353,7 +353,9 @@ def synthesize(req: SynthRequest):
     chunks = []
     for seg, dots in pieces:
         seg = normalize_text(seg)
-        if seg:
+        # Only synthesize segments that contain real speech; skip punctuation-only
+        # bits (lone quotes / periods) so the model doesn't utter "ah".
+        if seg and _re.search(r"[A-Za-z0-9]", seg):
             req.text = seg
             chunks.append(np.asarray(_engine.synth(req), dtype=np.float32).squeeze())
         if dots > 0:
