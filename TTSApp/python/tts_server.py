@@ -67,10 +67,11 @@ class XttsEngine:
         return sorted(str(s) for s in spk)
 
     def synth(self, req) -> np.ndarray:
+        # speed is applied uniformly post-synthesis (see _time_stretch) so every engine
+        # honors the slider; don't also apply XTTS's own (weak, pitch-shifting) speed here.
         kwargs = dict(
             text=req.text,
             language=req.language or "en",
-            speed=req.speed,
             temperature=req.temperature,
             repetition_penalty=req.repetition_penalty,
         )
@@ -310,7 +311,37 @@ def segment_with_pauses(text, p_comma, p_sentence, p_ellipsis, p_paragraph):
         if pidx < len(paras) - 1 and out and p_paragraph > 0:
             out[-1] = (out[-1][0], out[-1][1] + p_paragraph)
 
+    out = _merge_short_segments(out)
     return out if out else [(text.strip(), 0)]
+
+
+def _merge_short_segments(pieces, min_words: int = 3):
+    """Merge spoken fragments shorter than min_words into the following segment so no
+    model call receives an un-voiceable scrap (e.g. "Yes,"), which all engines turn into
+    mumbling/hallucinated noise at the boundary. Pure-pause pieces ("", ms) pass through;
+    a short fragment's own pause is dropped (it stops being a break point on purpose)."""
+    merged: list = []
+    carry = ""
+    for seg, pause in pieces:
+        if not seg.strip():  # pure silence (e.g. ellipsis) — flush carry, keep the gap
+            if carry:
+                merged.append((carry, 0))
+                carry = ""
+            merged.append((seg, pause))
+            continue
+        combined = (carry + " " + seg).strip() if carry else seg
+        if len(combined.split()) < min_words:
+            carry = combined
+            continue
+        merged.append((combined, pause))
+        carry = ""
+    if carry:
+        if merged and merged[-1][0].strip():
+            s, p = merged[-1]
+            merged[-1] = ((s + " " + carry).strip(), p)
+        else:
+            merged.append((carry, 0))
+    return merged
 
 
 def build_engine(model_id: str):
@@ -403,6 +434,39 @@ def _edge_fade(samples: np.ndarray, sr: int, fade_ms: int = 6) -> np.ndarray:
     return samples
 
 
+def _trim_silence(
+    samples: np.ndarray, sr: int, thresh: float = 0.01, margin_ms: int = 12
+) -> np.ndarray:
+    """Drop leading/trailing near-silence (and the low-energy breath/hallucinated tail that
+    XTTS/Chatterbox append to short utterances) so the only gap between chunks is the
+    controlled pause. thresh ~= -40 dBFS keeps quiet speech, cuts junk. Leaves a small
+    margin so _edge_fade has room to ramp."""
+    s = np.asarray(samples, dtype=np.float32)
+    voiced = np.where(np.abs(s) > thresh)[0]
+    if voiced.size == 0:
+        return s
+    margin = int(sr * margin_ms / 1000.0)
+    start = max(0, int(voiced[0]) - margin)
+    end = min(s.shape[0], int(voiced[-1]) + 1 + margin)
+    return s[start:end]
+
+
+def _time_stretch(samples: np.ndarray, sr: int, speed: float) -> np.ndarray:
+    """Pitch-preserving tempo change applied to the final audio so every engine honors the
+    speed slider (rate>1 = faster). Skips gracefully if librosa is unavailable."""
+    if abs(speed - 1.0) < 1e-3:
+        return samples
+    try:
+        import librosa
+
+        return librosa.effects.time_stretch(
+            np.asarray(samples, dtype=np.float32), rate=float(speed)
+        )
+    except Exception as e:  # pragma: no cover
+        print(f"Speed change skipped (librosa unavailable): {e}", flush=True)
+        return samples
+
+
 def to_wav_bytes(samples: np.ndarray, sr: int) -> bytes:
     samples = np.asarray(samples, dtype=np.float32).squeeze()
     samples = np.clip(samples, -1.0, 1.0)
@@ -471,7 +535,7 @@ def synthesize(req: SynthRequest):
             chunk = np.asarray(
                 _engine.synth(_request_with_text(req, seg)), dtype=np.float32
             ).squeeze()
-            chunks.append(_edge_fade(chunk, sr))
+            chunks.append(_edge_fade(_trim_silence(chunk, sr), sr))
         if pause_ms > 0:
             chunks.append(
                 np.zeros(
@@ -480,6 +544,8 @@ def synthesize(req: SynthRequest):
             )
 
     samples = np.concatenate(chunks) if chunks else np.zeros(1, dtype=np.float32)
+
+    samples = _time_stretch(samples, sr, req.speed)
 
     if req.denoise:
         samples = _dereverb(samples, sr)
