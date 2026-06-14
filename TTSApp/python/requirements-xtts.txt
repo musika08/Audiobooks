@@ -3,7 +3,9 @@
 torch==2.4.1
 torchaudio==2.4.1
 coqui-tts==0.27.5
-# transformers is pinned by coqui-tts itself (0.27.5 requires ==4.57); don't re-pin here.
+# coqui-tts needs transformers>=4.57 but its XTTS code imports isin_mps_friendly, which
+# transformers removed in 5.x. Cap below 5 so we land on the last 4.x (4.57.x) that has it.
+transformers>=4.57,<5
 fastapi==0.128.0
 uvicorn==0.49.0
 numpy==1.26.4
