@@ -233,15 +233,27 @@ import re as _re
 
 
 def normalize_text(t: str) -> str:
-    """Collapse ellipses / runs of dots to a single period so the model pauses
-    instead of grunting on '.....'. (GPU engines get raw text, unlike Kokoro.)"""
+    """Tidy a spoken segment (ellipsis handled separately by splitting)."""
     if not t:
         return t
-    t = t.replace("…", ".")  # … -> .
-    t = _re.sub(r"\.{2,}", ". ", t)  # "....." / ".." -> ". "
-    t = _re.sub(r"\s*([,.;:!?])\1+", r"\1", t)  # collapse repeated punctuation
+    t = t.replace("…", ".")
+    t = _re.sub(r"\.{2,}", ".", t)
+    t = _re.sub(r"\s*([,.;:!?])\1+", r"\1", t)
     t = _re.sub(r"[ \t]+", " ", t)
     return t.strip()
+
+
+def split_on_dot_runs(text: str):
+    """Split on ellipses / runs of 2+ dots. Returns [(segment, dot_count_after), ...].
+    The dots become inserted silence (no character for the model to vocalize)."""
+    text = text.replace("…", "...")
+    parts = []
+    last = 0
+    for m in _re.finditer(r"\.{2,}", text):
+        parts.append((text[last : m.start()], len(m.group(0))))
+        last = m.end()
+    parts.append((text[last:], 0))
+    return parts
 
 
 def build_engine(model_id: str):
@@ -332,11 +344,30 @@ def speakers():
 
 @app.post("/synthesize")
 def synthesize(req: SynthRequest):
-    req.text = normalize_text(req.text)  # collapse "....." so the model doesn't grunt
-    samples = _engine.synth(req)
+    sr = _engine.sr
+    full_text = req.text or ""
+
+    # Split on dot-runs ("....."): speak the words, insert real silence for the dots
+    # (no '.' for the model to vocalize as a grunt/"ah"). Longer run = longer pause.
+    pieces = split_on_dot_runs(full_text)
+    chunks = []
+    for seg, dots in pieces:
+        seg = normalize_text(seg)
+        if seg:
+            req.text = seg
+            chunks.append(np.asarray(_engine.synth(req), dtype=np.float32).squeeze())
+        if dots > 0:
+            ms = min(150 * dots, 2000)  # ~150ms per dot, capped at 2s
+            chunks.append(np.zeros(int(sr * ms / 1000.0), dtype=np.float32))
+
+    if chunks:
+        samples = np.concatenate(chunks)
+    else:
+        samples = np.zeros(1, dtype=np.float32)
+
     if req.denoise:
-        samples = _dereverb(samples, _engine.sr)
-    data = to_wav_bytes(samples, _engine.sr)
+        samples = _dereverb(samples, sr)
+    data = to_wav_bytes(samples, sr)
     return Response(content=data, media_type="audio/wav")
 
 
